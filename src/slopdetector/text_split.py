@@ -84,6 +84,31 @@ def split_sentences_with_spans(text: str) -> list[tuple[str, int, int]]:
     return out
 
 
+_HEADING_ONLY_RE = re.compile(r"^#{1,6}\s+\S.*$")
+
+
+def is_non_prose_unit(text: str) -> bool:
+    """True for a unit that's pure Markdown/LaTeX structure, not prose — a
+    section heading, or a display-math block with no surrounding sentence.
+
+    Real bug found scanning a real manuscript: JEV's reason question
+    flagged a raw LaTeX display equation (two \\text{} macros joined by
+    \\qquad) as formulaic_construction, and section headings occasionally
+    drew a flag/reason too — neither is prose an AI-slop judgment applies
+    to. Callers should still run Stage A rules on these (e.g.
+    register_title_case_headings is designed for exactly this case) and
+    only skip the LLM judgment (Stage B).
+    """
+    stripped = text.strip()
+    if not stripped:
+        return False
+    if "\n" not in stripped and _HEADING_ONLY_RE.match(stripped):
+        return True
+    if stripped.startswith("\\[") and stripped.endswith("\\]"):
+        return True
+    return False
+
+
 def split_units(text: str, granularity: str) -> list[Unit]:
     if granularity == "line":
         return split_lines(text)

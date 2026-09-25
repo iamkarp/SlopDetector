@@ -276,3 +276,22 @@ def test_gating_falls_back_to_plain_threshold_without_reason(monkeypatch):
     unit = result["units"][0]
     assert unit["tier"] == "flag"
     assert unit["confidence_gated"] is False
+
+
+def test_heading_and_math_units_skip_the_llm_call_entirely(fake_llm):
+    text = f"## A Section Heading\n\n{PARA_A}\n\n\\[ \\text{{a}} \\qquad \\text{{b}} \\]"
+    cfg = Config(use_llm=True, batch_size=10, cache_dir=None, threshold=0.99)
+    result = scan_text(text, cfg)
+
+    heading_unit = result["units"][0]
+    prose_unit = result["units"][1]
+    math_unit = result["units"][2]
+
+    assert heading_unit["score_source"] == "non-prose"
+    assert math_unit["score_source"] == "non-prose"
+    assert prose_unit["score_source"] == "llm"
+
+    # Only the one real prose paragraph reached judge_batch (calls are
+    # recorded by content-hash key, not uid, so just check the count).
+    assert len(fake_llm) == 1
+    assert len(fake_llm[0]) == 1

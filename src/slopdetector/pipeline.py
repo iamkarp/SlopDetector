@@ -20,7 +20,7 @@ from .detectors import Hit
 from .graph import load_nodes
 from .llm import DiskCache, cache_key, judge_batch, load_api_key
 from .rules import rule_score_to_pseudo_probability, score_unit
-from .text_split import split_sentences_with_spans, split_units
+from .text_split import is_non_prose_unit, split_sentences_with_spans, split_units
 
 
 def _tier(probability: float, threshold: float, reason: dict | None, min_flag_confidence: float) -> tuple[str, bool]:
@@ -92,7 +92,7 @@ class ScoredUnit:
     # demoted to "watch" because the reason distribution was too uncertain
     # about clean-vs-not to trust — see _tier's docstring.
     confidence_gated: bool = False
-    source: str = "rules-only"  # "llm" | "llm-cached" | "rules-only"
+    source: str = "rules-only"  # "llm" | "llm-cached" | "rules-only" | "non-prose"
     # Real OpenRouter usage for the exact call that scored THIS unit — only
     # set when that call judged this unit alone (batch of 1). Once batched,
     # usage is real but only attributable at the batch level (see
@@ -171,7 +171,29 @@ def _judge_many(
     pending_by_key: dict[str, tuple[str, str]] = {}  # content hash -> (text, rule_hits_summary)
     uid_to_key: dict[str, str] = {}
     for uid, text, start_line, end_line in unit_specs:
-        _, hits = rule_results[uid]
+        rule_score, hits = rule_results[uid]
+
+        # A heading or a pure display-math block isn't prose — Stage A
+        # rules still ran on it above (register_title_case_headings, etc.),
+        # but skip the LLM judgment (Stage B) entirely rather than pay for
+        # and act on a probability that isn't meaningful here.
+        if is_non_prose_unit(text):
+            probability = rule_score_to_pseudo_probability(rule_score)
+            tier, gated = _tier(probability, config.threshold, None, config.min_flag_confidence)
+            results[uid] = ScoredUnit(
+                id=uid,
+                text=text,
+                start_line=start_line,
+                end_line=end_line,
+                granularity=granularity,
+                rule_hits=hits,
+                probability=probability,
+                tier=tier,
+                confidence_gated=gated,
+                source="non-prose",
+            )
+            continue
+
         key = cache_key(config.model, text)
         uid_to_key[uid] = key
         cached = cache.get(config.model, text) if cache else None

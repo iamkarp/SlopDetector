@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from slopdetector.text_split import split_paragraphs, split_sentences, split_sentences_with_spans
+from slopdetector.text_split import is_non_prose_unit, split_paragraphs, split_sentences, split_sentences_with_spans
 
 
 def test_split_sentences_handles_normal_spaced_prose():
@@ -53,3 +53,36 @@ def test_split_paragraphs_unaffected_by_sentence_regex_change():
     text = "Paragraph one line.\n\nParagraph two line."
     units = split_paragraphs(text)
     assert [u.text for u in units] == ["Paragraph one line.", "Paragraph two line."]
+
+
+def test_is_non_prose_unit_detects_headings():
+    assert is_non_prose_unit("## The Assyrian Holds Me") is True
+    assert is_non_prose_unit("### A counterfactual Zillow risk exercise") is True
+    assert is_non_prose_unit("# Chapter 1: What Is Intelligence?") is True
+
+
+def test_is_non_prose_unit_detects_display_math():
+    # Real case found scanning a real manuscript: this exact LaTeX block
+    # got flagged by JEV as formulaic_construction, which it isn't — it's
+    # not prose at all.
+    text = r"\[ \text{perception: change beliefs} \qquad \text{action: change observations} \]"
+    assert is_non_prose_unit(text) is True
+
+
+def test_is_non_prose_unit_false_for_ordinary_prose():
+    assert is_non_prose_unit("This is an ordinary sentence about something.") is False
+    assert is_non_prose_unit("A number can feel final when it is attached to a person.") is False
+
+
+def test_is_non_prose_unit_false_for_multiline_paragraph_even_with_heading_like_first_line():
+    # A heading followed by body text on the next line is not a heading-only
+    # unit; split_paragraphs would only produce this shape for a heading
+    # immediately followed by prose with no blank line between them, but the
+    # predicate should still be conservative about multi-line input.
+    text = "## A Heading\nThis paragraph has body text right after the heading."
+    assert is_non_prose_unit(text) is False
+
+
+def test_is_non_prose_unit_false_for_prose_containing_bracket_characters():
+    text = "The result [1] was surprising, and the equation \\(x=1\\) confirmed it."
+    assert is_non_prose_unit(text) is False
