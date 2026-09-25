@@ -5,7 +5,17 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-_SENTENCE_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9\"'“])")
+# Two alternatives, not one \s* for both cases:
+# - before a DIGIT, still require real whitespace (\s+). Otherwise "3.14"
+#   or "$5.10" would split into "3." + "14" — a decimal's period has no
+#   space before the next digit either, so digits need the stricter rule.
+# - before an uppercase letter or quote, \s* (including zero) is safe: a
+#   decimal number is never immediately followed by a capital letter with
+#   no space. This is what fixes a real bug — pasted/scraped text with no
+#   space after sentence-ending punctuation ("sidewalk.It is important")
+#   used to glue three distinct sentences into one drill-down "sentence"
+#   because the old \s+-only regex refused to split without a space.
+_SENTENCE_RE = re.compile(r"(?<=[.!?])\s+(?=[0-9])|(?<=[.!?])\s*(?=[A-Z\"'“])")
 
 
 @dataclass
