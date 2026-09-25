@@ -1,5 +1,9 @@
 # SlopDetector
 
+[![tests](https://github.com/iamkarp/SlopDetector/actions/workflows/tests.yml/badge.svg)](https://github.com/iamkarp/SlopDetector/actions/workflows/tests.yml)
+![python](https://img.shields.io/badge/python-3.10%2B-blue)
+![BYOK](https://img.shields.io/badge/OpenRouter%20key-bring%20your%20own-informational)
+
 Extensible AI-slop probability scorer. Scans a document paragraph by
 paragraph (or line by line), always records a probability for every unit,
 and drills down into sentence-level children for any paragraph that flags.
@@ -28,18 +32,38 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-## Bring your own key (BYOK)
+## Add your own OpenRouter key (BYOK)
 
-This tool never ships an API key and never logs or persists one. Set your
-own before running:
+This tool never ships an API key and never logs or persists one. Without a
+key it still runs (`--no-llm`, rules-only, see below) — a key is only
+needed for the JEV probability call.
 
-```bash
-cp .env.example .env   # then fill in OPENROUTER_API_KEY=
-export OPENROUTER_API_KEY=sk-...
-```
+1. Get a key at [openrouter.ai/keys](https://openrouter.ai/keys) (sign up,
+   create a key, add credit — Jev decisions calls are billed per call, a
+   few cents covers a whole chapter).
+2. Give it to the tool, any one of these:
+   - **Export it for the session:**
+     ```bash
+     export OPENROUTER_API_KEY=sk-or-...
+     ```
+   - **Put it in a `.env` file in this repo** (gitignored, never committed):
+     ```bash
+     cp .env.example .env
+     # edit .env, set OPENROUTER_API_KEY=sk-or-...
+     ```
+   - **Point at a key file anywhere else**, e.g. one you already use for
+     other tools:
+     ```bash
+     slopdetector manuscript.md --env-file /path/to/your/openrouter.env
+     ```
+     (accepts either `OPENROUTER_API_KEY=...` or `openrouter_api_key=...`)
+3. Run it. No key configured and `--no-llm` not passed → the tool refuses
+   with a clear error naming exactly what's missing, it never silently
+   falls back or spends someone else's credit.
 
-Sharing this repository with someone else shares zero secrets — they
-supply their own key the same way. `.env` is gitignored.
+Sharing this repository with someone else shares zero secrets — they get
+their own key the same way. `.env` is gitignored; `.slopdetector-cache/`
+(cached Jev responses, also gitignored) never contains a key either.
 
 ## Usage
 
