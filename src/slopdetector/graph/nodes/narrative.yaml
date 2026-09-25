@@ -1,0 +1,84 @@
+# Mechanically detectable subset of book-forge's 20 narrative patterns
+# (90-anti-ai-patterns.md), ported from scripts/anti_ai_scan.py.
+# Patterns #1, #5, #7, #9, #11, #14-#19 are explicitly marked in that script
+# as "REQUIRES HUMAN OR MODEL REVIEW" (not regexable) — they are NOT
+# faked as zero-weight nodes here. Instead their names/definitions are
+# injected into the JEV prompt (llm/prompts.py) as judgment context, so
+# Stage B's model call covers what Stage A's rules structurally cannot.
+# Genre band thresholds (Literary Fiction/Memoir/Commercial Fiction/
+# Prescriptive NF) live in config.GENRE_BANDS, applied at report time.
+patterns:
+  - id: narrative_and_opening
+    category: narrative
+    detector: density
+    label: "dramatic 'And' sentence/paragraph openings"
+    weight: 0.5
+    source: "book-forge/scripts/anti_ai_scan.py pattern #6"
+    data:
+      pattern: '(?:^|\n\s*\n|[.!?]\s+)And\s+\w'
+      bands:
+        - [1.0, "minor", 0.125]
+        - [2.0, "moderate", 0.25]
+      strong_weight: 0.5
+
+  - id: narrative_described_emotion
+    category: narrative
+    detector: density
+    label: "described (not shown) emotion — 'she felt a wave of...'"
+    weight: 0.5
+    source: "book-forge/scripts/anti_ai_scan.py pattern #10"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\b(?:she|he|they|I|we)\s+felt\s+(?:a\s+(?:wave|surge|pang|flicker)\s+of\s+)?\w+'
+      bands:
+        - [1.0, "minor", 0.125]
+        - [2.0, "moderate", 0.25]
+      strong_weight: 0.5
+
+  - id: narrative_binary_negation_opener
+    category: narrative
+    detector: regex_min_count
+    label: "binary negation opener ('Not X. Not Y. [What it is].')"
+    weight: 0.9
+    source: "book-forge/scripts/anti_ai_scan.py pattern #12"
+    data:
+      pattern: '(?:^|\n)Not\b[^.!?]{0,60}[.!?]'
+      flags: [MULTILINE]
+      min_count: 2
+
+  - id: narrative_precision_flex
+    category: narrative
+    detector: density
+    label: "precision flex (unnecessarily exact numbers)"
+    weight: 0.6
+    source: "book-forge/scripts/anti_ai_scan.py pattern #13"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\bexactly\s+\d+(?:\.\d+)?\b|\b\d+\.\d+\s*(?:seconds|minutes|percent|%|degrees)\b'
+      bands:
+        - [1.0, "minor", 0.125]
+        - [2.0, "moderate", 0.25]
+      strong_weight: 0.5
+
+  - id: narrative_emotional_temperature
+    category: narrative
+    detector: density
+    label: "emotional temperature report (stock physiological cues)"
+    weight: 0.5
+    source: "book-forge/scripts/anti_ai_scan.py EMOTIONAL_TEMPERATURE_PHRASES (pattern #20)"
+    data:
+      flags: [IGNORECASE]
+      pattern: 'heart (?:pounded|raced|hammered|thudded)|pulse quickened|breath caught|stomach (?:churned|knotted|clenched)|took a deep breath|let out a breath|chest tightened|jaw clenched'
+      bands:
+        - [1.0, "minor", 0.125]
+        - [2.0, "moderate", 0.25]
+      strong_weight: 0.5
+
+  - id: narrative_excessive_parallelism
+    category: narrative
+    detector: anaphora_run
+    label: "excessive parallelism (3+ sentences sharing an opening)"
+    weight: 0.8
+    source: "book-forge 90-anti-ai-patterns.md #8"
+    data:
+      min_run: 3

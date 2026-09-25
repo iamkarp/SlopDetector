@@ -1,0 +1,104 @@
+# AI-tell vocabulary. Merged from slopmonster's VOCAB/VOCAB_EXACT lists,
+# book-forge's AI_VOCAB_WORDS, and humanizer's "AI Vocabulary Words" (#7).
+# Split the same way slopmonster splits them: stemmed (root-matched, catches
+# inflections) vs exact (literal phrases with an honest everyday sense too,
+# so they must not be stemmed or they over-fire).
+patterns:
+  - id: vocab_ai_words_stemmed
+    category: vocab
+    detector: wordlist_stemmed
+    label: "AI-tell vocabulary (root-matched)"
+    weight: 1.0
+    source: "slopmonster/deslop.py VOCAB + book-forge AI_VOCAB_WORDS + humanizer #7"
+    data:
+      words:
+        - delve
+        - leverage
+        - seamless
+        - elevate
+        - robust
+        - unlock
+        - unleash
+        - empower
+        - streamline
+        - revolutionize
+        - revolutionise
+        - transformative
+        - transformation
+        - innovate
+        - holistic
+        - synergy
+        - paradigm
+        - bespoke
+        - meticulous
+        - tapestry
+        - testament
+        - beacon
+        - unparalleled
+        - supercharge
+        - turbocharge
+        - effortless
+        - pivotal
+        - foster
+        - showcase
+        - compelling
+        - intuitive
+        - additionally
+        - crucial
+        - emphasizing
+        - enduring
+        - enhance
+        - garner
+        - highlight
+        - interplay
+        - intricate
+        - key
+        - underscore
+        - valuable
+        - vibrant
+        # NOTE: "landscape" deliberately excluded here. book-forge/humanizer
+        # flag it only as an abstract noun ("evolving landscape"); as a bare
+        # stem it false-positives hard on literal geography ("mountain
+        # landscape"). No regex can disambiguate sense — left for JEV
+        # (Stage B) to judge in context instead.
+
+  - id: vocab_ai_words_exact
+    category: vocab
+    detector: wordlist_exact
+    label: "AI-tell phrases (exact match, literal-sense risk)"
+    weight: 1.0
+    source: "slopmonster/deslop.py VOCAB_EXACT + humanizer promotional language"
+    data:
+      words:
+        - crafted
+        - curated
+        - harnessing
+        - harness the power
+        - journey
+        - realm
+        - navigate the
+        - in the world of
+        - in today's
+        - ever-evolving
+        - fast-paced
+        - look no further
+        - dive in
+        - let's dive
+        - deep dive
+        - embark
+        - unlock the power
+        - buckle up
+        - the secret sauce
+        - level up
+        - cutting-edge
+        - state-of-the-art
+        - game-changer
+        - game-changing
+        - next-level
+        - world-class
+        - best-in-class
+        - synergies
+        - boasts a
+        - nestled
+        - in the heart of
+        - must-visit

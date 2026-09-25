@@ -1,0 +1,64 @@
+# Communication-artifact patterns: chatbot residue that leaks into copy
+# (collaborative artifacts, knowledge-cutoff disclaimers, sycophancy,
+# signposting, rhetorical fake-candor openers). humanizer #20-22, #28, #33
+# plus stop-slop's throat-clearing/emphasis-crutch lists.
+patterns:
+  - id: collaborative_artifact
+    category: communication
+    detector: regex
+    label: "collaborative communication artifact (chatbot residue)"
+    weight: 1.0
+    source: "humanizer #20"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\bi hope this helps\b|\bof course!|\bcertainly!|\byou''re absolutely right\b|\bwould you like\b|\bwant me to\b|\bshould i continue\b|\blet me know\b|\bhere is a\b'
+
+  - id: knowledge_cutoff_disclaimer
+    category: communication
+    detector: regex
+    label: "knowledge-cutoff disclaimer / speculative gap-filling"
+    weight: 1.0
+    source: "humanizer #21"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\bas of \d{4}\b|\bup to my last training update\b|\bbased on available information\b|\bit is believed that\b|\bnot publicly available\b|\bmaintains a low profile\b|\bprefers to stay out of the spotlight\b|\blikely (?:grew up|studied|began)\b'
+
+  - id: sycophantic_tone
+    category: communication
+    detector: regex
+    label: "sycophantic/servile tone"
+    weight: 0.8
+    source: "humanizer #22"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\bwhat a (?:great|wonderful|fantastic) question\b|\byou''re so right\b|\babsolutely!\s'
+
+  - id: signposting_announcement
+    category: communication
+    detector: regex
+    label: "signposting/announcement opener"
+    weight: 0.6
+    source: "humanizer #28"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\blet''s dive in\b|\blet''s explore\b|\blet''s break this down\b|\bhere''s what you need to know\b|\bnow let''s look at\b|\bwithout further ado\b'
+
+  - id: rhetorical_fake_candor_opener
+    category: communication
+    detector: regex
+    label: "rhetorical fake-candor opener"
+    weight: 0.5
+    source: "humanizer #33 + stop-slop/references/phrases.md throat-clearing"
+    data:
+      flags: [IGNORECASE, MULTILINE]
+      pattern: '(?:^|\n)\s*(?:honestly\?|look,|here''s the thing|the thing is|let''s be honest|real talk)\b'
+
+  - id: emphasis_crutch
+    category: communication
+    detector: regex
+    label: "emphasis crutch ('Full stop.' 'Let that sink in.')"
+    weight: 0.6
+    source: "stop-slop/references/phrases.md emphasis crutches"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\bfull stop\.|\bperiod\.\s|\blet that sink in\.|\bmake no mistake\b|\bhere''s why that matters\b'

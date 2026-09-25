@@ -1,0 +1,57 @@
+# Punctuation cadence. book-forge's standing rule is zero em dashes, ever,
+# on manuscript prose (em_dash_hard_zero). slopmonster tolerates <=1 per
+# ~700 words and only flags at 2+ in one window (em_dash_cluster). Both
+# nodes stay in the graph; config.Config.profile picks which one gates
+# (see graph/edges.yaml "supersedes" edge and config.PROFILES).
+patterns:
+  - id: em_dash_hard_zero
+    category: punctuation
+    detector: regex
+    label: "em dash present (zero-tolerance rule)"
+    weight: 1.0
+    source: "book-forge SKILL.md standing rule 1: 'No em dashes. Ever.'"
+    data:
+      pattern: "—"
+
+  - id: em_dash_cluster
+    category: punctuation
+    detector: regex_min_count
+    label: "two or more em-dashes in one unit"
+    weight: 1.0
+    source: "slopmonster/deslop.py punctuation rule (220-char window)"
+    data:
+      pattern: "—"
+      min_count: 2
+
+  - id: double_hyphen_as_dash
+    category: punctuation
+    detector: regex
+    label: "double-hyphen used as an em dash"
+    weight: 1.0
+    source: "book-forge/scripts/anti_ai_scan.py hard rule"
+    data:
+      pattern: '(?<!-)-{2}(?!-)'
+
+  - id: semicolon_density
+    category: punctuation
+    detector: density
+    label: "semicolon-heavy for the surface"
+    weight: 0.6
+    source: "slopmonster/deslop.py punctuation rule"
+    data:
+      pattern: ';'
+      bands:
+        - [1.5, "minor", 0.15]
+        - [3.0, "moderate", 0.3]
+      strong_weight: 0.6
+
+  - id: hyphen_compound_stack
+    category: punctuation
+    detector: regex_min_count
+    label: "hyphenated compounds stacked in one sentence"
+    weight: 0.6
+    source: "slopmonster/deslop.py COMPOUND / COMPOUND_FLOOR=4"
+    data:
+      pattern: '\b[a-z]{2,}-[a-z]{2,}(?:-[a-z]{2,})*\b'
+      flags: [IGNORECASE]
+      min_count: 4

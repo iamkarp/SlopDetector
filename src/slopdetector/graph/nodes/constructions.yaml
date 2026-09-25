@@ -1,0 +1,186 @@
+# Sentence-shape constructions. Ported from slopmonster's PHRASES regex set
+# (the loudest single tell it names: "not just X, but Y") plus book-forge's
+# anti_ai_scan.py negative-parallelism add-on.
+patterns:
+  - id: not_just_but
+    category: construction
+    detector: regex
+    label: "'not just X, but Y' construction"
+    weight: 1.2
+    source: "slopmonster/deslop.py PHRASES _NEG_JUST"
+    data:
+      flags: [IGNORECASE]
+      # "n't" has no word boundary before it in "isn't"/"doesn't" (the n is
+      # glued to the preceding letter), so it can't share a leading \b with
+      # "not" — matched as a bare literal instead.
+      pattern: '(?:\bnot\b|n''t)\s+(?:just|only|merely|simply)\b[^.!?]{0,80}\bbut\b'
+
+  - id: whether_you_opener
+    category: construction
+    detector: regex
+    label: "'whether you''re X or Y' opener"
+    weight: 1.0
+    source: "slopmonster/deslop.py PHRASES"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\bwhether you(?:''re| are)\b[^.!?]{0,40}\bor\b'
+
+  - id: more_than_just
+    category: construction
+    detector: regex
+    label: "'more than just'"
+    weight: 0.6
+    source: "slopmonster/deslop.py PHRASES"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\bmore than just\b'
+
+  - id: thats_where_it_comes_in
+    category: construction
+    detector: regex
+    label: "'that''s where X comes in'"
+    weight: 1.0
+    source: "slopmonster/deslop.py PHRASES"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\b(?:that|this)(?:''s| is) where\b[^.!?]{0,30}\bcomes? in\b'
+
+  - id: say_goodbye_to
+    category: construction
+    detector: regex
+    label: "'say goodbye to'"
+    weight: 0.8
+    source: "slopmonster/deslop.py PHRASES"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\bsay goodbye to\b'
+
+  - id: imagine_opener
+    category: construction
+    detector: regex
+    label: "'imagine a...' opener"
+    weight: 0.6
+    source: "slopmonster/deslop.py PHRASES"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\bimagine (?:a|an|the)\b'
+
+  - id: essay_summary_phrasing
+    category: construction
+    detector: regex
+    label: "essay-summary phrasing"
+    weight: 0.8
+    source: "slopmonster/deslop.py PHRASES"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\bin conclusion\b|\bto sum up\b'
+
+  - id: when_it_comes_to
+    category: construction
+    detector: regex
+    label: "'when it comes to' filler"
+    weight: 0.5
+    source: "slopmonster/deslop.py PHRASES"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\bwhen it comes to\b'
+
+  - id: end_of_the_day
+    category: construction
+    detector: regex
+    label: "'at the end of the day'"
+    weight: 0.6
+    source: "slopmonster/deslop.py PHRASES + stop-slop filler"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\bat the end of the day\b'
+
+  - id: throat_clearing_opener
+    category: construction
+    detector: regex
+    label: "throat-clearing opener"
+    weight: 0.7
+    source: "slopmonster/deslop.py PHRASES + stop-slop/references/phrases.md"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\bthe key is\b|\bthe truth is\b|\bhere''s the thing\b|\blet''s break (?:it|this) down\b|\bthe best part\b|\bthe uncomfortable truth is\b|\bit turns out\b'
+
+  - id: hedged_benefit
+    category: construction
+    detector: regex
+    label: "hedged benefit ('helps you to...')"
+    weight: 0.5
+    source: "slopmonster/deslop.py PHRASES"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\bhelps? you to\b|\bcan help you\b'
+
+  - id: stacked_hedging
+    category: construction
+    detector: regex
+    label: "stacked hedging"
+    weight: 1.0
+    source: "slopmonster/deslop.py PHRASES + humanizer #24"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\bmay potentially\b|\bcould potentially\b|\bmight possibly\b|\bmight\s+\w+\s+potentially\b'
+
+  - id: intensifier_padding
+    category: construction
+    detector: regex
+    label: "intensifier padding"
+    weight: 0.5
+    source: "slopmonster/deslop.py PHRASES"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\bvery unique\b|\bquite literally\b'
+
+  - id: boilerplate_cta
+    category: construction
+    detector: regex
+    label: "boilerplate CTA"
+    weight: 0.6
+    source: "slopmonster/deslop.py PHRASES"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\bready to get started\b|\blet''s get started\b'
+
+  - id: self_answering_question
+    category: construction
+    detector: regex
+    label: "self-answering question"
+    weight: 0.8
+    source: "slopmonster/deslop.py PHRASES"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\bthe (?:result|answer|catch|kicker|upshot)\?\s'
+
+  - id: negative_parallelism
+    category: construction
+    detector: regex
+    label: "negative parallelism ('not only... but...')"
+    weight: 1.0
+    source: "book-forge/scripts/anti_ai_scan.py + humanizer #9 + stop-slop binary contrasts"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\b(?:not|wasn''t|isn''t|weren''t|aren''t)\s+(?:only|just|merely|simply|solely|purely)\b[^.!?]*?\b(?:but|it\s+(?:is|was)|they\s+(?:are|were)|he\s+(?:is|was)|she\s+(?:is|was))\b|\bit\s+(?:is|was)\s+not\b[^.!?]*?,\s*it\s+(?:is|was)\b|\bit''s not\b[^.!?]*?,\s*it''s\b'
+
+  - id: false_range
+    category: construction
+    detector: regex
+    label: "false range ('from X to Y' on a non-scale)"
+    weight: 0.6
+    source: "humanizer #12"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\bfrom\s+\w+(?:\s+\w+){0,2}\s+to\s+\w+(?:\s+\w+){0,2}\b(?=[,.]|\s+(?:and|or)\b)'
+
+  - id: copula_avoidance
+    category: construction
+    detector: regex
+    label: "copula avoidance (serves as / stands as / represents)"
+    weight: 0.6
+    source: "humanizer #8"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\b(?:serves as|stands as|represents a|boasts (?:a|an)|features (?:a|an)|offers (?:a|an))\b'

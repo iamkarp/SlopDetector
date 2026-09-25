@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "slopdetector"
+version = "0.1.0"
+description = "Extensible AI-slop probability scorer, backed by a rule-graph plus an OpenRouter judge model."
+requires-python = ">=3.10"
+dependencies = [
+    "pyyaml>=6.0",
+    "requests>=2.31",
+]
+
+[project.scripts]
+slopdetector = "slopdetector.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+slopdetector = ["graph/nodes/*.yaml", "graph/edges.yaml"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]

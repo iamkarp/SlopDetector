@@ -1,0 +1,14 @@
+# Invented social proof. Deliberately trigger-happy per slopmonster's own
+# design note; that tool's --allow-proof flag downgrades this to advisory.
+# Mirror that with weight rather than a separate flag: keep it in the graph,
+# let the calling profile decide how much it should move the score.
+patterns:
+  - id: invented_proof_number
+    category: proof
+    detector: regex
+    label: "unverified number next to a people-noun ('10,000+ happy users')"
+    weight: 1.0
+    source: "slopmonster/deslop.py PROOF regex"
+    data:
+      flags: [IGNORECASE]
+      pattern: '([\d][\d,]*(?:\.\d+)?)\s*\+?\s*((?:happy|early|active|satisfied|verified|trusted|delighted)\s+)?(?:\w+\s+){0,1}(users?|customers?|learners?|students?|teams?|members?|companies|businesses|homeowners?|subscribers?|clients?|patients?|readers?|sites?|projects?)(?!\w)'

@@ -1,0 +1,84 @@
+# Filler, hedging, and lazy-extreme patterns. humanizer #23-25 + stop-slop
+# adverb/filler lists + stop-slop lazy-extremes list.
+patterns:
+  - id: adverb_padding
+    category: filler
+    detector: density
+    label: "adverb padding"
+    weight: 0.4
+    source: "stop-slop/references/phrases.md adverbs-to-kill"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\b(?:really|just|literally|genuinely|honestly|simply|actually|deeply|truly|fundamentally|inherently|inevitably|interestingly|importantly|crucially)\b'
+      bands:
+        - [4.0, "minor", 0.125]
+        - [8.0, "moderate", 0.25]
+      strong_weight: 0.5
+
+  - id: filler_phrases
+    category: filler
+    detector: regex
+    label: "filler phrase (should be cut or shortened)"
+    weight: 0.6
+    source: "humanizer #23 + stop-slop/references/phrases.md"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\bin order to\b|\bdue to the fact that\b|\bat this point in time\b|\bin the event that\b|\bhas the ability to\b|\bit is important to note that\b|\bit''s worth noting\b|\bat its core\b|\bin a world where\b|\bthe reality is\b'
+
+  - id: excessive_hedging
+    category: filler
+    detector: regex
+    label: "excessive hedging"
+    weight: 0.6
+    source: "humanizer #24"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\b(?:might|could|may)\b[^.!?]{0,20}\b(?:potentially|possibly|perhaps)\b'
+
+  - id: generic_positive_conclusion
+    category: filler
+    detector: regex
+    label: "generic positive conclusion"
+    weight: 0.7
+    source: "humanizer #25"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\bthe future (?:looks|is) bright\b|\bexciting times (?:lie|are) ahead\b'
+
+  - id: hyphenated_pair_overuse
+    category: filler
+    detector: density
+    label: "hyphenated word-pair overuse"
+    weight: 0.3
+    source: "humanizer #26"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\b(?:third-party|cross-functional|client-facing|data-driven|decision-making|well-known|high-quality|real-time|long-term|end-to-end)\b'
+      bands:
+        - [2.0, "minor", 0.125]
+        - [4.0, "moderate", 0.25]
+      strong_weight: 0.5
+
+  - id: lazy_extremes
+    category: filler
+    detector: density
+    label: "lazy extremes (every/always/never/nobody)"
+    weight: 0.3
+    source: "stop-slop/references/structures.md word patterns"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\b(?:every|always|never|everyone|everybody|nobody)\b'
+      bands:
+        - [3.0, "minor", 0.1]
+        - [6.0, "moderate", 0.2]
+      strong_weight: 0.4
+
+  - id: persuasive_authority_trope
+    category: filler
+    detector: regex
+    label: "persuasive-authority trope"
+    weight: 0.5
+    source: "humanizer #27"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\bthe real question is\b|\bat its core\b|\bin reality\b|\bwhat really matters\b|\bfundamentally\b|\bthe deeper issue\b|\bthe heart of the matter\b'

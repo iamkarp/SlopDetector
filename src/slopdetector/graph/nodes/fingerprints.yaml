@@ -1,0 +1,160 @@
+# Fiction-only phrase-level model fingerprints, ported verbatim from
+# book-forge/references/93-model-fingerprints.md's audit regex block
+# (families A-H) plus M (significance flag), N (superlative ranking), and
+# L (thematic-summary endings). Density decides, not presence: "a phrase in
+# one chapter of ten is invisible, the same phrase in seven is machinery."
+# genre_modifiers downweight these hard for nonfiction, where they're mostly
+# irrelevant (this catalog targets literary/commercial fiction prose).
+patterns:
+  - id: fingerprint_a_negation_correction
+    category: fingerprint
+    detector: density
+    label: "negation/correction fingerprint ('not quite', 'It wasn't X. It was Y.')"
+    weight: 0.5
+    source: "book-forge/references/93-model-fingerprints.md family A"
+    genre_modifiers: {prescriptive-nf: 0.2, literary-fiction: 1.0, commercial-fiction: 1.0, memoir: 0.6}
+    data:
+      flags: [IGNORECASE]
+      pattern: '\bnot (?:quite|exactly|really|yet|anymore)\b'
+      bands:
+        - [1.5, "minor", 0.125]
+        - [3.0, "moderate", 0.25]
+      strong_weight: 0.5
+
+  - id: fingerprint_b_continuation_holding
+    category: fingerprint
+    detector: density
+    label: "continuation/holding fingerprint ('keeps looking', 'holds still')"
+    weight: 0.5
+    source: "book-forge/references/93-model-fingerprints.md family B"
+    genre_modifiers: {prescriptive-nf: 0.2, literary-fiction: 1.0, commercial-fiction: 1.0, memoir: 0.6}
+    data:
+      flags: [IGNORECASE]
+      pattern: '\b(?:she|he|they|we|I|[A-Z][a-z]+)\s+(?:keeps?|holds?|remains?|stays?|lets?)\b'
+      bands:
+        - [1.5, "minor", 0.125]
+        - [3.0, "moderate", 0.25]
+      strong_weight: 0.5
+
+  - id: fingerprint_c_abstract_of_it
+    category: fingerprint
+    detector: density
+    label: "abstract 'of it' fingerprint ('the whole of it', 'the weight of it')"
+    weight: 0.5
+    source: "book-forge/references/93-model-fingerprints.md family C"
+    genre_modifiers: {prescriptive-nf: 0.2, literary-fiction: 1.0, commercial-fiction: 1.0, memoir: 0.6}
+    data:
+      flags: [IGNORECASE]
+      pattern: '\bthe (?:whole|shape|weight|truth|quiet|silence|ache|thought|idea|memory|sound) of it\b'
+      bands:
+        - [1.0, "minor", 0.125]
+        - [2.0, "moderate", 0.25]
+      strong_weight: 0.5
+
+  - id: fingerprint_d_interpretive_simile
+    category: fingerprint
+    detector: density
+    label: "interpretive simile fingerprint ('as if', 'as though', 'the kind of')"
+    weight: 0.4
+    source: "book-forge/references/93-model-fingerprints.md family D"
+    genre_modifiers: {prescriptive-nf: 0.2, literary-fiction: 1.0, commercial-fiction: 1.0, memoir: 0.6}
+    data:
+      flags: [IGNORECASE]
+      pattern: '\b(?:as if|as though|the kind of)\b'
+      bands:
+        - [2.0, "minor", 0.125]
+        - [4.0, "moderate", 0.25]
+      strong_weight: 0.5
+
+  - id: fingerprint_e_body_as_emotion
+    category: fingerprint
+    detector: density
+    label: "body-as-emotional-instrument fingerprint (jaw tightens, throat works)"
+    weight: 0.5
+    source: "book-forge/references/93-model-fingerprints.md family E"
+    genre_modifiers: {prescriptive-nf: 0.1, literary-fiction: 1.0, commercial-fiction: 1.0, memoir: 0.7}
+    data:
+      flags: [IGNORECASE]
+      pattern: '\bjaw tightens?\b|\bthroat works?\b|\bchest constricts?\b|\bpulse jumps?\b|\bbreath catches?\b|\bgaze holds?\b|\bknuckles whiten\b'
+      bands:
+        - [1.0, "minor", 0.125]
+        - [2.0, "moderate", 0.25]
+      strong_weight: 0.5
+
+  - id: fingerprint_f_calibrated_smallness
+    category: fingerprint
+    detector: density
+    label: "calibrated smallness fingerprint (almost, barely, a flicker of)"
+    weight: 0.4
+    source: "book-forge/references/93-model-fingerprints.md family F"
+    genre_modifiers: {prescriptive-nf: 0.3, literary-fiction: 1.0, commercial-fiction: 1.0, memoir: 0.7}
+    data:
+      flags: [IGNORECASE]
+      pattern: '\b(?:almost|barely|nearly|just enough)\b|\ba flicker of\b|\ba ghost of\b|\ba beat too long\b'
+      bands:
+        - [2.0, "minor", 0.125]
+        - [4.0, "moderate", 0.25]
+      strong_weight: 0.5
+
+  - id: fingerprint_g_fragment_stacks
+    category: fingerprint
+    detector: density
+    label: "fragment stack fingerprint ('A beat.' 'A pause.' 'Silence.')"
+    weight: 0.6
+    source: "book-forge/references/93-model-fingerprints.md family G"
+    genre_modifiers: {prescriptive-nf: 0.1, literary-fiction: 1.0, commercial-fiction: 1.0, memoir: 0.7}
+    data:
+      flags: [MULTILINE]
+      pattern: '(?:^|\n)(?:A beat|A pause|A breath|Silence|Almost)\.\s*$'
+      bands:
+        - [1.0, "minor", 0.125]
+        - [2.0, "moderate", 0.25]
+      strong_weight: 0.5
+
+  - id: fingerprint_h_silence_as_object
+    category: fingerprint
+    detector: density
+    label: "silence/air-as-physical-object fingerprint"
+    weight: 0.5
+    source: "book-forge/references/93-model-fingerprints.md family H"
+    genre_modifiers: {prescriptive-nf: 0.1, literary-fiction: 1.0, commercial-fiction: 1.0, memoir: 0.7}
+    data:
+      flags: [IGNORECASE]
+      pattern: '\b(?:words?|silence|air|room|space|moment)\s+(?:hangs?|lands?|settles?|stretches?|shifts?|thickens?|holds?)\b'
+      bands:
+        - [1.0, "minor", 0.125]
+        - [2.0, "moderate", 0.25]
+      strong_weight: 0.5
+
+  - id: fingerprint_m_significance_flag
+    category: fingerprint
+    detector: regex
+    label: "significance flag ('That was the thing about it.')"
+    weight: 0.9
+    source: "book-forge/references/93-model-fingerprints.md family M (documented incident: 22 instances / 13 of 18 chapters)"
+    genre_modifiers: {prescriptive-nf: 0.2, literary-fiction: 1.0, commercial-fiction: 1.0, memoir: 0.7}
+    data:
+      flags: [IGNORECASE]
+      pattern: '\bthat was the (?:thing|part|trouble)\b|\bbecause this was the thing\b|\bthe thing (?:she|he|they) took away\b'
+
+  - id: fingerprint_n_superlative_ranking
+    category: fingerprint
+    detector: regex
+    label: "superlative ranking ('the single most X she ever...')"
+    weight: 0.9
+    source: "book-forge/references/93-model-fingerprints.md family N (documented incident: 27 instances at 0.91/1000 words)"
+    genre_modifiers: {prescriptive-nf: 0.3, literary-fiction: 1.0, commercial-fiction: 1.0, memoir: 0.7}
+    data:
+      flags: [IGNORECASE]
+      pattern: '\bthe (?:single\s+)?most\s+\w+\s+(?:she|he|they|I)\s+(?:had|has)?\s*ever\b'
+
+  - id: fingerprint_l_thematic_summary_ending
+    category: fingerprint
+    detector: regex
+    label: "thematic-summary ending ('For now.' 'Nothing has changed. Everything has.')"
+    weight: 0.7
+    source: "book-forge/references/93-model-fingerprints.md family L"
+    genre_modifiers: {prescriptive-nf: 0.2, literary-fiction: 1.0, commercial-fiction: 1.0, memoir: 0.7}
+    data:
+      flags: [IGNORECASE, MULTILINE]
+      pattern: '\bfor now\.\s*$|\bit is enough\.\s*$|\bmaybe that is enough\.\s*$|\bnothing has changed\. everything has\.'

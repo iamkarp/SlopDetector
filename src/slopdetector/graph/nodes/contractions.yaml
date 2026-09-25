@@ -1,0 +1,16 @@
+# New pattern, not present in any source skill: missing contractions.
+# AI drafts skew heavily toward expanded forms ("they do not" instead of
+# "they don't"). Weight is genre-conditional via config.Config.formality —
+# a formal essay legitimately avoids contractions, so this must never fire
+# as a flat rule; contraction_ratio.py reads node._formality (injected by
+# the pipeline from Config, not stored in the YAML) to pick the floor.
+patterns:
+  - id: missing_contractions
+    category: register
+    detector: contraction_ratio
+    label: "suspiciously low contraction ratio for the register"
+    weight: 1.0
+    source: "new — user-requested, not in book-forge/slopmonster/humanizer/stop-slop"
+    applicable_granularity: [paragraph, line]
+    data:
+      min_opportunities: 3

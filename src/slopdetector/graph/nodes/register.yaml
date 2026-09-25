@@ -1,0 +1,189 @@
+# Register patterns for non-prose surfaces (blurbs, bios, ad copy, listings).
+# book-forge treats these as a 24-pattern, 5/5-required gate on marketing
+# surfaces and never applies them to manuscript prose; humanizer's SKILL.md
+# documents the same 24 under Wikipedia's "Signs of AI writing". #7 (AI
+# Vocabulary Words) lives in vocab.yaml already; not duplicated here.
+patterns:
+  - id: register_significance_legacy
+    category: register
+    detector: wordlist_exact
+    label: "undue emphasis on significance/legacy/broader trends"
+    weight: 0.4
+    source: "book-forge 90-anti-ai-patterns.md #1 / humanizer #1"
+    data:
+      words:
+        - stands as
+        - serves as
+        - is a testament
+        - is a reminder
+        - a vital role
+        - a significant role
+        - a crucial role
+        - a pivotal role
+        - a key role
+        - a pivotal moment
+        - underscores its importance
+        - underscores its significance
+        - highlights its importance
+        - highlights its significance
+        - reflects broader
+        - symbolizing its ongoing
+        - symbolizing its enduring
+        - symbolizing its lasting
+        - contributing to the
+        - setting the stage for
+        - marking the
+        - shaping the
+        - represents a shift
+        - marks a shift
+        - key turning point
+        - evolving landscape
+        - focal point
+        - indelible mark
+        - deeply rooted
+
+  - id: register_notability_media
+    category: register
+    detector: wordlist_exact
+    label: "undue emphasis on notability/media coverage"
+    weight: 0.4
+    source: "book-forge 90-anti-ai-patterns.md #2 / humanizer #2"
+    data:
+      words:
+        - independent coverage
+        - local media outlets
+        - regional media outlets
+        - national media outlets
+        - written by a leading expert
+        - active social media presence
+
+  - id: register_superficial_ing_analysis
+    category: register
+    detector: regex
+    label: "superficial -ing analysis"
+    weight: 0.5
+    source: "book-forge 90-anti-ai-patterns.md #3 / humanizer #3"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\b(?:highlighting|underscoring|emphasizing|reflecting|symbolizing|contributing to|cultivating|fostering|encompassing|showcasing)\b'
+
+  - id: register_promotional_language
+    category: register
+    detector: wordlist_exact
+    label: "promotional/advertisement-like language"
+    weight: 0.5
+    source: "book-forge 90-anti-ai-patterns.md #4 / humanizer #4"
+    data:
+      words:
+        - boasts a
+        - vibrant
+        - rich
+        - profound
+        - enhancing its
+        - showcasing
+        - exemplifies
+        - commitment to
+        - natural beauty
+        - nestled
+        - in the heart of
+        - groundbreaking
+        - renowned
+        - breathtaking
+        - must-visit
+        - stunning
+
+  - id: register_vague_attribution
+    category: register
+    detector: wordlist_exact
+    label: "vague attributions / weasel words"
+    weight: 0.5
+    source: "book-forge 90-anti-ai-patterns.md #5 / humanizer #5"
+    data:
+      words:
+        - industry reports
+        - observers have cited
+        - experts argue
+        - some critics argue
+        - several sources
+        - several publications
+
+  - id: register_outline_challenges_section
+    category: register
+    detector: regex
+    label: "outline-like 'Challenges and Future Prospects' section"
+    weight: 0.4
+    source: "book-forge 90-anti-ai-patterns.md #6 / humanizer #6"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\bdespite its\b.{0,60}\bfaces (?:several )?challenges\b|\bdespite these challenges\b|\bchallenges and legacy\b|\bfuture outlook\b'
+
+  - id: register_copula_avoidance
+    category: register
+    detector: regex
+    label: "copula avoidance"
+    weight: 0.4
+    source: "humanizer #8 (see also construction.copula_avoidance for the broader form)"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\b(?:serves as|stands as|marks|represents) (?:a|an)\b'
+
+  - id: register_elegant_variation
+    category: register
+    detector: regex
+    label: "elegant variation (synonym cycling for the same referent)"
+    weight: 0.3
+    source: "humanizer #11"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\b(?:the aforementioned|said individual|the latter|the former)\b'
+
+  - id: register_boldface_overuse
+    category: register
+    detector: density
+    label: "overuse of boldface"
+    weight: 0.4
+    source: "book-forge 90-anti-ai-patterns.md #14 / humanizer #15"
+    data:
+      pattern: '\*\*[^*\n]+\*\*'
+      bands:
+        - [3.0, "minor", 0.15]
+        - [6.0, "moderate", 0.3]
+      strong_weight: 0.5
+
+  - id: register_inline_header_lists
+    category: register
+    detector: regex
+    label: "inline-header vertical list (bolded header + colon)"
+    weight: 0.4
+    source: "book-forge 90-anti-ai-patterns.md #15 / humanizer #16"
+    data:
+      pattern: '^\s*[-*]\s*\*\*[^*\n]+\*\*:'
+      flags: [MULTILINE]
+
+  - id: register_title_case_headings
+    category: register
+    detector: regex
+    label: "title case in headings"
+    weight: 0.2
+    source: "book-forge 90-anti-ai-patterns.md #16 / humanizer #17"
+    data:
+      pattern: '^#{1,6}\s+(?:[A-Z][a-z''.]*\s+){2,}[A-Z][a-z''.]*\s*$'
+      flags: [MULTILINE]
+
+  - id: register_emojis
+    category: register
+    detector: regex
+    label: "emojis in prose"
+    weight: 0.5
+    source: "book-forge 90-anti-ai-patterns.md #17 / humanizer #18"
+    data:
+      pattern: '[\U0001F300-\U0001FAFF☀-➿]'
+
+  - id: register_curly_quotes
+    category: register
+    detector: regex
+    label: "curly quotation marks"
+    weight: 0.2
+    source: "book-forge 90-anti-ai-patterns.md #18 / humanizer #19"
+    data:
+      pattern: '[“”]'

@@ -1,0 +1,34 @@
+# Relationships between pattern nodes. Not required for scoring to work;
+# used for provenance/merge documentation and for the drill-down tree logic.
+edges:
+  - type: alias-of
+    from: vocab_ai_words_stemmed
+    to: vocab_ai_words_exact
+    note: >
+      slopmonster's VOCAB/VOCAB_EXACT split and humanizer's "AI Vocabulary
+      Words" (#7) overlap heavily. Merged into one stemmed + one exact list
+      in vocab.yaml with combined provenance; this edge records the merge.
+
+  - type: supersedes
+    from: em_dash_hard_zero
+    to: em_dash_cluster
+    note: >
+      book-forge's standing rule ("no em dashes, ever, zero, not sparingly")
+      supersedes slopmonster's tolerance ("<=1 per 700 words") when
+      profile=surface-gate. Both nodes stay in the graph; config.PROFILES
+      picks which one gates.
+
+  - type: drill-down-of
+    from: paragraph
+    to: sentence
+    note: >
+      Stage C of the pipeline: any paragraph node scoring >= threshold gets
+      re-scanned at sentence granularity, children attached under it.
+
+  - type: overlaps-with
+    from: negative_parallelism
+    to: not_just_but
+    note: >
+      humanizer #9 (Negative Parallelisms) and slopmonster's "not just X,
+      but Y" construction are the same family at different specificity;
+      kept as separate nodes since the regexes differ in strictness.

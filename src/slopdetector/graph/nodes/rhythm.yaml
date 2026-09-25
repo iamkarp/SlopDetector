@@ -1,0 +1,35 @@
+# Rule-of-three / tricolon rhythm. Narrow on purpose: "inspection, repair
+# and replacement" is designed to score clean (short single-word/short-phrase
+# lists in plain service copy are not the tell; the AI cadence is three
+# balanced clauses building to a flourish).
+patterns:
+  - id: tricolon_oxford
+    category: rhythm
+    detector: regex
+    label: "rule-of-three, Oxford comma, three single words"
+    weight: 0.8
+    source: "slopmonster/deslop.py rhythm rule"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\b(\w{4,}),\s+(\w{4,}),\s+and\s+(\w{4,})\b'
+
+  - id: tricolon_no_oxford
+    category: rhythm
+    detector: regex
+    label: "rule-of-three, no Oxford comma, closing phrase"
+    weight: 0.8
+    source: "slopmonster/deslop.py rhythm rule"
+    data:
+      flags: [IGNORECASE]
+      pattern: '\b(\w{4,}),\s+(\w{4,})\s+and\s+(?:\w+\s+){1,2}\w+\s*[.!?,;:]'
+
+  - id: rule_of_three_generic
+    category: rhythm
+    detector: regex_min_count
+    label: "repeated 'X, Y, and Z' rhythm across the unit"
+    weight: 0.7
+    source: "book-forge/scripts/anti_ai_scan.py rule-of-three regex"
+    data:
+      flags: []
+      pattern: '\b[\w][\w \''-]{0,24}?,\s*[\w][\w \''-]{0,24}?,?\s+(?:and|or)\s+[\w][\w \''-]{0,24}?[.,;!?]'
+      min_count: 2
