@@ -53,7 +53,8 @@ class ScoredUnit:
     rule_hits: list[Hit]
     probability: float
     tier: str
-    source: str  # "llm" | "rules-only"
+    source: str  # "llm" | "llm-cached" | "rules-only"
+    usage: dict | None = None  # real OpenRouter usage, only set when source == "llm"
     children: list["ScoredUnit"] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -66,6 +67,7 @@ class ScoredUnit:
             "probability": round(self.probability, 4),
             "tier": self.tier,
             "score_source": self.source,
+            "usage": self.usage,
             "rule_hits": [
                 {"pattern_id": h.pattern_id, "label": h.label, "detail": h.detail, "weight": h.weight}
                 for h in self.rule_hits
@@ -87,6 +89,7 @@ def _score_one(
     inflight: InFlightGuard | None,
 ) -> ScoredUnit:
     rule_score, hits = score_unit(text, granularity, config, nodes)
+    usage = None
 
     if config.use_llm and api_key:
         cached = cache.get(config.model, text) if cache else None
@@ -111,6 +114,7 @@ def _score_one(
                         rule_hits_summary=_hits_summary(hits),
                     )
                     probability, source = result["probability"], "llm"
+                    usage = result.get("usage")  # only set on a fresh call — a cache hit cost nothing this run
                     if cache:
                         cache.set(config.model, text, result)
     else:
@@ -126,7 +130,41 @@ def _score_one(
         probability=probability,
         tier=_tier(probability, config.threshold),
         source=source,
+        usage=usage,
     )
+
+
+def _sum_usage(units: list[ScoredUnit]) -> dict:
+    """Real spend for this run: only units.usage set by a fresh API call
+    (source == 'llm') count — a cache hit is real work already paid for in
+    an earlier run, not new cost here. Walks children too (Stage C makes
+    its own calls)."""
+    input_tokens = output_tokens = 0
+    cost = 0.0
+    billed_calls = cached_calls = 0
+
+    def walk(unit: ScoredUnit) -> None:
+        nonlocal input_tokens, output_tokens, cost, billed_calls, cached_calls
+        if unit.source == "llm" and unit.usage:
+            input_tokens += unit.usage.get("input_tokens", 0)
+            output_tokens += unit.usage.get("output_tokens", 0)
+            cost += unit.usage.get("cost", 0.0)
+            billed_calls += 1
+        elif unit.source == "llm-cached":
+            cached_calls += 1
+        for child in unit.children:
+            walk(child)
+
+    for u in units:
+        walk(u)
+
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "cost_usd": round(cost, 6),
+        "billed_calls": billed_calls,
+        "cached_calls": cached_calls,
+    }
 
 
 def scan_text(text: str, config: Config | None = None) -> dict:
@@ -210,6 +248,8 @@ def scan_text(text: str, config: Config | None = None) -> dict:
             pattern_freq[h.pattern_id] = pattern_freq.get(h.pattern_id, 0) + 1
     top_patterns = sorted(pattern_freq.items(), key=lambda kv: -kv[1])[:10]
 
+    usage_totals = _sum_usage(scored)
+
     # profile.gates=True (surface-gate) means any flagged unit fails the
     # document, matching book-forge's 5/5-required marketing-copy gate;
     # profile.gates=False (prose-advisory/marketing) never fails, matching
@@ -231,6 +271,7 @@ def scan_text(text: str, config: Config | None = None) -> dict:
             "tier_counts": tier_counts,
             "gate_passed": gate_passed,
             "top_patterns": [{"pattern_id": pid, "count": c} for pid, c in top_patterns],
+            "usage_totals": usage_totals,
         },
         "units": [u.to_dict() for u in scored],
     }

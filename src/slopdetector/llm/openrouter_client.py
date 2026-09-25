@@ -54,9 +54,11 @@ def judge_paragraph(
     timeout: int = 30,
     max_retries: int = 3,
 ) -> dict:
-    """Returns {"probability": float, "rationale": str}. Raises
-    OpenRouterModelError with a clear message (naming a fallback) on
-    repeated failure — never fails silently.
+    """Returns {"probability": float, "rationale": str, "usage": {"input_tokens",
+    "output_tokens", "cost"}}. usage comes straight from OpenRouter's own
+    response — real metering, not an estimate. Raises OpenRouterModelError
+    with a clear message (naming a fallback) on repeated failure — never
+    fails silently.
     """
     from .prompts import QUESTION_KEY, build_decision_body
 
@@ -105,6 +107,12 @@ def judge_paragraph(
 
         probability = max(0.0, min(1.0, probability))
         rationale = f"Jev noul={probability:.3f}" + (f"; rule hits: {rule_hits_summary[:150]}" if rule_hits_summary else "")
-        return {"probability": probability, "rationale": rationale}
+        raw_usage = payload.get("usage") or {}
+        usage = {
+            "input_tokens": raw_usage.get("input_tokens", 0),
+            "output_tokens": raw_usage.get("output_tokens", 0),
+            "cost": raw_usage.get("cost", 0.0),
+        }
+        return {"probability": probability, "rationale": rationale, "usage": usage}
 
     raise OpenRouterModelError(f"OpenRouter decisions call failed after {max_retries} attempts: {last_err}")

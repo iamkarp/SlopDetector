@@ -95,3 +95,16 @@ def test_gate_passed_false_under_surface_gate_when_flagged():
     result = scan_text(SLOP_PARAGRAPH, cfg)
     assert result["summary"]["tier_counts"]["flag"] >= 1
     assert result["summary"]["gate_passed"] is False
+
+
+def test_usage_totals_are_zero_in_rules_only_mode():
+    cfg = Config(use_llm=False)
+    result = scan_text(CLEAN_PARAGRAPH, cfg)
+    totals = result["summary"]["usage_totals"]
+    assert totals == {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": 0.0,
+        "billed_calls": 0,
+        "cached_calls": 0,
+    }
