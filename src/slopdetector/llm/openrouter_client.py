@@ -93,12 +93,15 @@ def judge_paragraph(
         if resp.status_code != 200:
             raise OpenRouterModelError(f"OpenRouter decisions call failed ({resp.status_code}): {resp.text[:300]}")
 
-        payload = resp.json()
         try:
+            payload = resp.json()
             answer = payload["answers"][QUESTION_KEY]
             probability = float(answer["noul"])
-        except (KeyError, TypeError, ValueError) as e:
-            raise OpenRouterModelError(f"Unexpected decisions response shape: {payload}") from e
+        except (ValueError, KeyError, TypeError) as e:
+            # ValueError also covers JSON decode failures (json.JSONDecodeError
+            # subclasses it), so a non-JSON body and a wrong-shaped JSON body
+            # both surface as one clear error instead of leaking a raw traceback.
+            raise OpenRouterModelError(f"Unexpected decisions response: {resp.text[:300]}") from e
 
         probability = max(0.0, min(1.0, probability))
         rationale = f"Jev noul={probability:.3f}" + (f"; rule hits: {rule_hits_summary[:150]}" if rule_hits_summary else "")

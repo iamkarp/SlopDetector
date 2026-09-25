@@ -52,6 +52,28 @@ def split_sentences(text: str) -> list[str]:
     return [p.strip() for p in parts if p.strip()]
 
 
+def split_sentences_with_spans(text: str) -> list[tuple[str, int, int]]:
+    """Like split_sentences, but also returns each sentence's [start, end)
+    character offset into the (stripped) input, so callers can map a
+    sentence back to a line number instead of inheriting the whole unit's
+    line range."""
+    stripped = text.strip()
+    if not stripped:
+        return []
+    spans: list[tuple[int, int]] = []
+    pos = 0
+    for m in _SENTENCE_RE.finditer(stripped):
+        spans.append((pos, m.start()))
+        pos = m.end()
+    spans.append((pos, len(stripped)))
+    out = []
+    for start, end in spans:
+        sent = stripped[start:end].strip()
+        if sent:
+            out.append((sent, start, end))
+    return out
+
+
 def split_units(text: str, granularity: str) -> list[Unit]:
     if granularity == "line":
         return split_lines(text)

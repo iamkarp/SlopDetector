@@ -66,7 +66,10 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(rendered)
 
-    return 0
+    # profile=surface-gate fails the run (exit 1) if any unit flagged,
+    # matching book-forge's 5/5-required convention for non-prose surfaces.
+    # prose-advisory/marketing profiles never gate (exit 0 regardless).
+    return 0 if result["summary"]["gate_passed"] else 1
 
 
 if __name__ == "__main__":

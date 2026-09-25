@@ -68,3 +68,30 @@ def test_summary_counts_match_unit_tiers():
     assert counts["flag"] + counts["watch"] + counts["clean"] == len(result["units"])
     assert counts["flag"] == 1
     assert counts["clean"] == 1
+
+
+def test_sentence_children_get_distinct_accurate_line_offsets():
+    # Multi-line paragraph: sentence 2 starts on line 2, not line 1.
+    multiline = "In today's fast-paced world, we delve into it.\nIt's not just a product, but a lifestyle, too."
+    cfg = Config(use_llm=False, threshold=0.3, granularity="paragraph")
+    result = scan_text(multiline, cfg)
+    unit = result["units"][0]
+    assert unit["start_line"] == 1
+    assert unit["end_line"] == 2
+    assert len(unit["children"]) >= 2
+    # children must not all inherit the parent's full [1,2] range identically
+    lines = {(c["start_line"], c["end_line"]) for c in unit["children"]}
+    assert len(lines) > 1
+
+
+def test_gate_passed_true_by_default_prose_advisory():
+    cfg = Config(use_llm=False, threshold=0.5, profile="prose-advisory")
+    result = scan_text(SLOP_PARAGRAPH, cfg)
+    assert result["summary"]["gate_passed"] is True
+
+
+def test_gate_passed_false_under_surface_gate_when_flagged():
+    cfg = Config(use_llm=False, threshold=0.5, profile="surface-gate")
+    result = scan_text(SLOP_PARAGRAPH, cfg)
+    assert result["summary"]["tier_counts"]["flag"] >= 1
+    assert result["summary"]["gate_passed"] is False

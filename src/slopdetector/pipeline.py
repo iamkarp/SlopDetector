@@ -7,14 +7,23 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 
 from .config import Config
 from .detectors import Hit
 from .graph import load_nodes
-from .llm import DiskCache, OpenRouterAuthError, OpenRouterModelError, judge_paragraph, load_api_key
+from .llm import (
+    DiskCache,
+    InFlightGuard,
+    OpenRouterAuthError,
+    OpenRouterModelError,
+    cache_key,
+    judge_paragraph,
+    load_api_key,
+)
 from .rules import rule_score_to_pseudo_probability, score_unit
-from .text_split import split_sentences, split_units
+from .text_split import split_sentences_with_spans, split_units
 
 
 def _tier(probability: float, threshold: float) -> str:
@@ -75,6 +84,7 @@ def _score_one(
     nodes: list[dict],
     api_key: str | None,
     cache: DiskCache | None,
+    inflight: InFlightGuard | None,
 ) -> ScoredUnit:
     rule_score, hits = score_unit(text, granularity, config, nodes)
 
@@ -83,18 +93,26 @@ def _score_one(
         if cached:
             probability, source = cached["probability"], "llm-cached"
         else:
-            try:
-                result = judge_paragraph(
-                    text,
-                    model=config.model,
-                    api_key=api_key,
-                    rule_hits_summary=_hits_summary(hits),
-                )
-                probability, source = result["probability"], "llm"
-                if cache:
-                    cache.set(config.model, text, result)
-            except (OpenRouterAuthError, OpenRouterModelError):
-                raise
+            # Two threads can be asked to score identical text (duplicate
+            # paragraph, or a sentence that also stands alone elsewhere).
+            # Serialize on a per-(model, text) lock so only one of them
+            # actually calls the API; the rest wait, then read the cache
+            # the winner just wrote (atomically, via DiskCache.set).
+            ctx = inflight.lock_for(cache_key(config.model, text)) if inflight else nullcontext()
+            with ctx:
+                cached = cache.get(config.model, text) if cache else None
+                if cached:
+                    probability, source = cached["probability"], "llm-cached"
+                else:
+                    result = judge_paragraph(
+                        text,
+                        model=config.model,
+                        api_key=api_key,
+                        rule_hits_summary=_hits_summary(hits),
+                    )
+                    probability, source = result["probability"], "llm"
+                    if cache:
+                        cache.set(config.model, text, result)
     else:
         probability, source = rule_score_to_pseudo_probability(rule_score), "rules-only"
 
@@ -127,6 +145,7 @@ def scan_text(text: str, config: Config | None = None) -> dict:
         api_key = load_api_key(config.env_file)
 
     cache = DiskCache(config.cache_dir) if config.use_llm else None
+    inflight = InFlightGuard() if config.use_llm else None
 
     scored: list[ScoredUnit] = [None] * len(units)  # type: ignore[list-item]
     with ThreadPoolExecutor(max_workers=config.concurrency) as pool:
@@ -142,6 +161,7 @@ def scan_text(text: str, config: Config | None = None) -> dict:
                 nodes,
                 api_key,
                 cache,
+                inflight,
             ): u.index
             for u in units
         }
@@ -149,25 +169,31 @@ def scan_text(text: str, config: Config | None = None) -> dict:
             idx = futures[fut]
             scored[idx] = fut.result()
 
-    # Stage C: drill down on flagged units.
+    # Stage C: drill down on flagged units. Sentence spans come from the
+    # unit's own text, so start_line/end_line are computed from how many
+    # newlines precede each sentence within the unit, not inherited
+    # wholesale from the parent paragraph.
     for unit in scored:
         if unit.probability < config.threshold:
             continue
-        sentences = split_sentences(unit.text)
-        if len(sentences) < 2:
+        sentence_spans = split_sentences_with_spans(unit.text)
+        if len(sentence_spans) < 2:
             continue
         children = []
-        for i, sent in enumerate(sentences):
+        for i, (sent, span_start, span_end) in enumerate(sentence_spans):
+            sent_start_line = unit.start_line + unit.text[:span_start].count("\n")
+            sent_end_line = unit.start_line + unit.text[:span_end].count("\n")
             child = _score_one(
                 sent,
-                unit.start_line,
-                unit.end_line,
+                sent_start_line,
+                sent_end_line,
                 "sentence",
                 f"{unit.id}-s{i}",
                 config,
                 nodes,
                 api_key,
                 cache,
+                inflight,
             )
             children.append(child)
         unit.children = children
@@ -184,6 +210,12 @@ def scan_text(text: str, config: Config | None = None) -> dict:
             pattern_freq[h.pattern_id] = pattern_freq.get(h.pattern_id, 0) + 1
     top_patterns = sorted(pattern_freq.items(), key=lambda kv: -kv[1])[:10]
 
+    # profile.gates=True (surface-gate) means any flagged unit fails the
+    # document, matching book-forge's 5/5-required marketing-copy gate;
+    # profile.gates=False (prose-advisory/marketing) never fails, matching
+    # book-forge's advisory-only manuscript-prose behavior.
+    gate_passed = not (config.profile_settings().get("gates") and tier_counts["flag"] > 0)
+
     return {
         "config": {
             "model": config.model,
@@ -197,6 +229,7 @@ def scan_text(text: str, config: Config | None = None) -> dict:
             "unit_count": len(scored),
             "mean_probability": round(mean_prob, 4),
             "tier_counts": tier_counts,
+            "gate_passed": gate_passed,
             "top_patterns": [{"pattern_id": pid, "count": c} for pid, c in top_patterns],
         },
         "units": [u.to_dict() for u in scored],

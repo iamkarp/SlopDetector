@@ -66,11 +66,14 @@ def test_proof_fires_on_real_invented_claim():
     assert "invented_proof_number" in hit_ids("Trusted by 10,000+ happy customers worldwide.")
 
 
-def test_em_dash_hard_zero_fires_on_single_dash():
-    assert "em_dash_hard_zero" in hit_ids("This is bold — truly bold.")
+def test_em_dash_hard_zero_fires_on_single_dash_under_surface_gate():
+    # Default profile (prose-advisory) tolerates one dash — see
+    # test_prose_advisory_profile_tolerates_a_single_em_dash below.
+    _, hits = score_unit("This is bold — truly bold.", "paragraph", Config(profile="surface-gate"), NODES)
+    assert "em_dash_hard_zero" in {h.pattern_id for h in hits}
 
 
-def test_em_dash_cluster_requires_two():
+def test_em_dash_cluster_requires_two_under_prose_advisory():
     assert "em_dash_cluster" not in hit_ids("This is bold — truly bold.")
     assert "em_dash_cluster" in hit_ids("This — bold — is also — unusual.")
 
@@ -107,3 +110,24 @@ def test_anaphora_run_fires_on_three_repeated_openers():
 def test_anaphora_run_does_not_fire_on_two():
     text = "She walked away slowly. She walked away without looking. He stayed behind."
     assert "narrative_excessive_parallelism" not in hit_ids(text)
+
+
+def test_surface_gate_profile_uses_zero_tolerance_em_dash_rule():
+    _, hits = score_unit("Bold — truly bold.", "paragraph", Config(profile="surface-gate"), NODES)
+    ids = {h.pattern_id for h in hits}
+    assert "em_dash_hard_zero" in ids
+    assert "em_dash_cluster" not in ids  # would double-count the same dash rule
+
+
+def test_prose_advisory_profile_tolerates_a_single_em_dash():
+    _, hits = score_unit("Bold — truly bold.", "paragraph", Config(profile="prose-advisory"), NODES)
+    ids = {h.pattern_id for h in hits}
+    assert "em_dash_hard_zero" not in ids
+    assert "em_dash_cluster" not in ids  # only one dash present, cluster needs 2+
+
+
+def test_prose_advisory_profile_still_flags_a_dash_cluster():
+    _, hits = score_unit("This — bold — is also — unusual.", "paragraph", Config(profile="prose-advisory"), NODES)
+    ids = {h.pattern_id for h in hits}
+    assert "em_dash_cluster" in ids
+    assert "em_dash_hard_zero" not in ids
