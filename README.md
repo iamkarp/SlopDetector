@@ -1,6 +1,5 @@
 # SlopDetector
 
-[![tests](https://github.com/iamkarp/SlopDetector/actions/workflows/tests.yml/badge.svg)](https://github.com/iamkarp/SlopDetector/actions/workflows/tests.yml)
 ![python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![BYOK](https://img.shields.io/badge/OpenRouter%20key-bring%20your%20own-informational)
 
