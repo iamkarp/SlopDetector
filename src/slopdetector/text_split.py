@@ -84,27 +84,51 @@ def split_sentences_with_spans(text: str) -> list[tuple[str, int, int]]:
     return out
 
 
-_HEADING_ONLY_RE = re.compile(r"^#{1,6}\s+\S.*$")
+_MD_HEADING_ONLY_RE = re.compile(r"^#{1,6}\s+\S.*$")
+# AsciiDoc: "== Title ==", "=== Title ===", etc. — same leading/trailing run
+# length, whitespace-padded. Real example that leaked through the Markdown-only
+# check: a book using AsciiDoc source (`== Chapter 12: ... ==`) had its section
+# headings scored as prose because they don't start with "#".
+_ASCIIDOC_HEADING_ONLY_RE = re.compile(r"^(=+)\s+\S.*\S\s+\1$")
+
+# Structured-fragment heuristic (e.g. a table's cell text with no surrounding
+# blank lines, so it landed in one paragraph unit): every line short, none
+# ending in sentence punctuation. Real example: an AsciiDoc table's cells
+# ("Correctness" / "May not match forward pass" / "Always consistent") were
+# scored as if they were a sentence. Multi-line only, so a genuinely short
+# one-line prose paragraph is never caught by this.
+_MAX_FRAGMENT_LINE_WORDS = 8
+_SENTENCE_END_CHARS = (".", "!", "?", ":", ";")
 
 
 def is_non_prose_unit(text: str) -> bool:
-    """True for a unit that's pure Markdown/LaTeX structure, not prose — a
-    section heading, or a display-math block with no surrounding sentence.
+    """True for a unit that's pure Markdown/AsciiDoc/LaTeX structure, or a
+    table-cell fragment, not prose — a section heading, a display-math
+    block with no surrounding sentence, or short unpunctuated table-row text
+    that landed in one paragraph unit.
 
-    Real bug found scanning a real manuscript: JEV's reason question
-    flagged a raw LaTeX display equation (two \\text{} macros joined by
-    \\qquad) as formulaic_construction, and section headings occasionally
-    drew a flag/reason too — neither is prose an AI-slop judgment applies
-    to. Callers should still run Stage A rules on these (e.g.
-    register_title_case_headings is designed for exactly this case) and
-    only skip the LLM judgment (Stage B).
+    Real bugs found scanning real manuscripts: JEV's reason question flagged
+    a raw LaTeX display equation (two \\text{} macros joined by \\qquad) as
+    formulaic_construction; Markdown section headings occasionally drew a
+    flag/reason too; an AsciiDoc-source book's `== Heading ==` lines weren't
+    caught by the Markdown-only check and leaked through the same way; and a
+    stray table fragment scored as if it were a sentence. None of this is
+    prose an AI-slop judgment applies to. Callers should still run Stage A
+    rules on these (e.g. register_title_case_headings is designed for
+    exactly the heading case) and only skip the LLM judgment (Stage B).
     """
     stripped = text.strip()
     if not stripped:
         return False
-    if "\n" not in stripped and _HEADING_ONLY_RE.match(stripped):
-        return True
+    if "\n" not in stripped:
+        if _MD_HEADING_ONLY_RE.match(stripped) or _ASCIIDOC_HEADING_ONLY_RE.match(stripped):
+            return True
     if stripped.startswith("\\[") and stripped.endswith("\\]"):
+        return True
+    lines = [line.strip() for line in stripped.splitlines() if line.strip()]
+    if len(lines) >= 2 and all(
+        len(line.split()) <= _MAX_FRAGMENT_LINE_WORDS and not line.endswith(_SENTENCE_END_CHARS) for line in lines
+    ):
         return True
     return False
 

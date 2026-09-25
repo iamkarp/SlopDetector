@@ -86,3 +86,35 @@ def test_is_non_prose_unit_false_for_multiline_paragraph_even_with_heading_like_
 def test_is_non_prose_unit_false_for_prose_containing_bracket_characters():
     text = "The result [1] was surprising, and the equation \\(x=1\\) confirmed it."
     assert is_non_prose_unit(text) is False
+
+
+def test_is_non_prose_unit_detects_asciidoc_headings():
+    # Real case found scanning a real manuscript that uses AsciiDoc source:
+    # these leaked through the Markdown-only ("#") heading check.
+    assert is_non_prose_unit("== Chapter 12: Continuous-Depth and Implicit Models ==") is True
+    assert is_non_prose_unit("== The Shape of Measuring ==") is True
+    assert is_non_prose_unit("=== A Tuesday in Montreal ===") is True
+
+
+def test_is_non_prose_unit_asciidoc_heading_requires_matching_equals_count():
+    # "== Title =" (mismatched run lengths) is not a valid heading; be
+    # conservative and don't treat it as non-prose.
+    assert is_non_prose_unit("== Title =") is False
+
+
+def test_is_non_prose_unit_detects_table_fragment():
+    # Real case: an AsciiDoc table's cell text with no blank lines around it
+    # landed in one paragraph unit and got scored as if it were a sentence.
+    text = "Correctness\nMay not match forward pass\nAlways consistent"
+    assert is_non_prose_unit(text) is True
+
+
+def test_is_non_prose_unit_table_fragment_requires_multiple_lines():
+    # A genuinely short one-line prose paragraph must not be caught.
+    assert is_non_prose_unit("Correctness matters.") is False
+    assert is_non_prose_unit("Freedom was first a debt cancellation.") is False
+
+
+def test_is_non_prose_unit_false_for_multiline_prose_with_terminal_punctuation():
+    text = "This is a real paragraph.\nIt has two full sentences on separate lines.\nBoth end properly."
+    assert is_non_prose_unit(text) is False

@@ -9,5 +9,5 @@ dist/
 .env
 *.env
 !.env.example
-.slopdetector-cache/
+.slopdetector-cache*/
 .DS_Store
