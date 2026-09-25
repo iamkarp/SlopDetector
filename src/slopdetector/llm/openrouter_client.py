@@ -50,28 +50,38 @@ def judge_batch(
     model: str,
     api_key: str,
     pattern_taxonomy: str = "",
+    include_reason: bool = True,
     timeout: int = 60,
     max_retries: int = 3,
 ) -> dict:
     """Judges 1+ paragraphs in ONE decisions call — each as its own
     independent 'noul' question, sharing one request's fixed overhead (the
     ~500-token AI-tell taxonomy is sent once in `state`, not once per
-    paragraph). Returns {"answers": {key: {"probability", "rationale"}},
-    "usage": {...}}. `usage` is for the WHOLE request as OpenRouter reports
-    it — real metering, not an estimate — and is only attributable to a
-    single paragraph when len(items) == 1; batching trades that per-unit
-    cost attribution for real, measured token savings in aggregate.
+    paragraph). If include_reason, each paragraph also gets a companion
+    'choice' question naming the primary diagnosis category (see
+    prompts.REASON_CATEGORIES) — real, verified live: it correctly separated
+    a vocabulary-driven slop example, a rhythm-driven one, and a clean human
+    one, each with a sharp probability distribution across categories, not
+    just a bare top pick. Costs roughly 2x the tokens of noul-only judging.
+
+    Returns {"answers": {key: {"probability", "rationale", "reason"}},
+    "usage": {...}}. "reason" is None when include_reason=False, else
+    {"category", "confidence", "probabilities"}. `usage` is for the WHOLE
+    request as OpenRouter reports it — real metering, not an estimate — and
+    is only attributable to a single paragraph when len(items) == 1;
+    batching trades that per-unit cost attribution for real, measured token
+    savings in aggregate.
 
     Raises OpenRouterModelError with a clear message (naming a fallback) on
     repeated failure or a malformed/missing answer — never fails silently
     and never returns a partial result for some keys but not others.
     """
-    from .prompts import build_batch_decision_body
+    from .prompts import REASON_KEY_SUFFIX, build_batch_decision_body
 
     if not items:
         return {"answers": {}, "usage": {"input_tokens": 0, "output_tokens": 0, "cost": 0.0}}
 
-    body = build_batch_decision_body(model, items, pattern_taxonomy or None)
+    body = build_batch_decision_body(model, items, pattern_taxonomy or None, include_reason=include_reason)
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
@@ -118,10 +128,24 @@ def judge_batch(
                     f"Batched decisions response is missing an answer for '{key}': {resp.text[:300]}"
                 )
             probability = max(0.0, min(1.0, float(ans["noul"])))
+
+            reason = None
+            if include_reason:
+                reason_ans = raw_answers.get(key + REASON_KEY_SUFFIX)
+                if not isinstance(reason_ans, dict) or "choice" not in reason_ans:
+                    raise OpenRouterModelError(
+                        f"Batched decisions response is missing the reason answer for '{key}': {resp.text[:300]}"
+                    )
+                reason = {
+                    "category": reason_ans["choice"],
+                    "confidence": reason_ans.get("confidence"),
+                    "probabilities": reason_ans.get("probabilities"),
+                }
+
             rationale = f"Jev noul={probability:.3f} (batched, {len(items)} paragraph(s) in request)" + (
                 f"; rule hits: {rule_hits_summary[:150]}" if rule_hits_summary else ""
             )
-            answers[key] = {"probability": probability, "rationale": rationale}
+            answers[key] = {"probability": probability, "rationale": rationale, "reason": reason}
 
         raw_usage = payload.get("usage") or {}
         usage = {
@@ -141,20 +165,28 @@ def judge_paragraph(
     api_key: str,
     rule_hits_summary: str = "",
     pattern_taxonomy: str = "",
+    include_reason: bool = True,
     timeout: int = 30,
     max_retries: int = 3,
 ) -> dict:
     """Single-paragraph convenience wrapper over judge_batch (a batch of
     one) — kept for simple library/script use. Returns {"probability",
-    "rationale", "usage"}; usage is exact here since the batch has one item.
+    "rationale", "reason", "usage"}; usage is exact here since the batch has
+    one item.
     """
     result = judge_batch(
         [("q", text, rule_hits_summary)],
         model=model,
         api_key=api_key,
         pattern_taxonomy=pattern_taxonomy,
+        include_reason=include_reason,
         timeout=timeout,
         max_retries=max_retries,
     )
     answer = result["answers"]["q"]
-    return {"probability": answer["probability"], "rationale": answer["rationale"], "usage": result["usage"]}
+    return {
+        "probability": answer["probability"],
+        "rationale": answer["rationale"],
+        "reason": answer["reason"],
+        "usage": result["usage"],
+    }

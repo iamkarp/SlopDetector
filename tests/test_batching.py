@@ -20,12 +20,15 @@ PROB_MAP = {PARA_A: 0.9, PARA_B: 0.2, PARA_C: 0.5}
 
 
 def _fake_judge_batch_factory(calls: list):
-    def fake_judge_batch(items, *, model, api_key, pattern_taxonomy="", timeout=60, max_retries=3):
+    def fake_judge_batch(
+        items, *, model, api_key, pattern_taxonomy="", include_reason=True, timeout=60, max_retries=3
+    ):
         calls.append([key for key, _text, _hits in items])
         answers = {}
         for key, text, _hits in items:
             prob = PROB_MAP.get(text, 0.5)
-            answers[key] = {"probability": prob, "rationale": "fake"}
+            reason = {"category": "not_slop", "confidence": 0.9, "probabilities": {}} if include_reason else None
+            answers[key] = {"probability": prob, "rationale": "fake", "reason": reason}
         usage = {
             "input_tokens": 100 * len(items),
             "output_tokens": 10 * len(items),
@@ -124,3 +127,32 @@ def test_stage_c_drilldown_units_are_pooled_into_the_batch_count(fake_llm):
     assert len(fake_llm) == 2  # one call for the paragraph pass, one for the sentence pass
     assert len(result["units"][0]["children"]) == 2
     assert result["summary"]["usage_totals"]["fresh_units"] == 1 + 2  # 1 paragraph + 2 sentences
+
+
+def test_reason_is_included_by_default(fake_llm):
+    cfg = Config(use_llm=True, batch_size=10, cache_dir=None, threshold=0.99)
+    result = scan_text(PARA_A, cfg)
+    assert result["units"][0]["reason"] == {"category": "not_slop", "confidence": 0.9, "probabilities": {}}
+
+
+def test_no_reason_flag_skips_it_and_is_passed_through_to_judge_batch(fake_llm, monkeypatch):
+    seen_include_reason = []
+    original = pipeline_module.judge_batch
+
+    def spy(*args, **kwargs):
+        seen_include_reason.append(kwargs.get("include_reason"))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(pipeline_module, "judge_batch", spy)
+    cfg = Config(use_llm=True, batch_size=10, cache_dir=None, threshold=0.99, include_reason=False)
+    result = scan_text(PARA_A, cfg)
+    assert seen_include_reason == [False]
+    assert result["units"][0]["reason"] is None
+
+
+def test_cached_reason_is_served_on_cache_hit(fake_llm, tmp_path):
+    cfg = Config(use_llm=True, batch_size=10, cache_dir=str(tmp_path), threshold=0.99)
+    scan_text(PARA_A, cfg)
+    result2 = scan_text(PARA_A, cfg)
+    assert result2["units"][0]["score_source"] == "llm-cached"
+    assert result2["units"][0]["reason"] == {"category": "not_slop", "confidence": 0.9, "probabilities": {}}

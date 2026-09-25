@@ -65,6 +65,10 @@ class ScoredUnit:
     # summary.usage_totals), not to any single paragraph, so this stays
     # None rather than guess a split.
     usage: dict | None = None
+    # {"category", "confidence", "probabilities"} from Jev's companion
+    # "choice" question — see prompts.REASON_CATEGORIES. None when
+    # config.include_reason is False, or in rules-only/cached-without-it mode.
+    reason: dict | None = None
     children: list["ScoredUnit"] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -78,6 +82,7 @@ class ScoredUnit:
             "tier": self.tier,
             "score_source": self.source,
             "usage": self.usage,
+            "reason": self.reason,
             "rule_hits": [
                 {"pattern_id": h.pattern_id, "label": h.label, "detail": h.detail, "weight": h.weight}
                 for h in self.rule_hits
@@ -143,6 +148,7 @@ def _judge_many(
                 probability=cached["probability"],
                 tier=_tier(cached["probability"], config.threshold),
                 source="llm-cached",
+                reason=cached.get("reason"),
             )
         else:
             pending_by_key.setdefault(key, (text, _hits_summary(hits)))
@@ -153,7 +159,9 @@ def _judge_many(
 
         def run_batch(batch: list[tuple[str, tuple[str, str]]]) -> tuple[list, dict]:
             items = [(key, text, hits) for key, (text, hits) in batch]
-            return batch, judge_batch(items, model=config.model, api_key=api_key)
+            return batch, judge_batch(
+                items, model=config.model, api_key=api_key, include_reason=config.include_reason
+            )
 
         answers_by_key: dict[str, dict] = {}
         usage_by_key: dict[str, dict | None] = {}
@@ -186,6 +194,7 @@ def _judge_many(
                 tier=_tier(answer["probability"], config.threshold),
                 source="llm",
                 usage=usage_by_key[key],
+                reason=answer.get("reason"),
             )
 
     return results, batch_usages

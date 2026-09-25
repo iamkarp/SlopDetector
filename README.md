@@ -89,6 +89,27 @@ markdown). The trade-off: `units[].usage` (per-paragraph token/cost) is
 only exact when that paragraph's call judged it alone; once batched, cost
 is real but only attributable at the batch level.
 
+### `units[].reason` — why, not just a number
+
+By default, every unit also gets a companion diagnosis: which of six
+categories (`vocabulary`, `formulaic_construction`, `rhythm_uniformity`,
+`register_or_tone`, `unsupported_or_vague_content`, `not_slop`) best
+explains the score, plus JEV's full probability distribution across all
+six — not just a top pick. Pass `--no-reason` to skip it (roughly halves
+JEV token cost, since it doubles the questions asked per unit).
+
+This isn't just a transparency nicety — running it on a real manuscript
+chapter, adding the reason question (nothing else changed) dropped flagged
+paragraphs from 39 to 15 and mean probability from 0.43 to 0.33, and every
+remaining flag came with a *low-confidence* top reason (several had
+`not_slop` itself as the single most-likely individual category, just not
+likely enough on its own to outweigh the other five combined). Forcing the
+model to commit to a specific, falsifiable category appears to genuinely
+improve — not just explain — its calibration on the core question. Low
+top-reason confidence on a flag is itself a signal: it means the model
+couldn't settle on a specific, concrete diagnosis, which is worth weighing
+before acting on that flag.
+
 ## Extending the pattern graph
 
 Add a new pattern with zero code changes: drop a YAML file (or a node) into

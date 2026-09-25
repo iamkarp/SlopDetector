@@ -40,6 +40,7 @@ class Config:
     formality: str = "neutral"  # "formal" | "neutral" | "casual" — gates contraction weight
     concurrency: int = 6  # concurrent JEV *requests* in flight, each request may hold batch_size units
     batch_size: int = 10  # units judged per JEV decisions call; 1 = one call per unit (old behavior)
+    include_reason: bool = True  # companion "why" category per unit; ~2x tokens, --no-reason to skip
     use_llm: bool = True
     env_file: str | None = None
     cache_dir: str | None = ".slopdetector-cache"

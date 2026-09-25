@@ -28,6 +28,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=10,
         help="Units judged per JEV decisions call (1 = one call per unit, matches pre-batching behavior).",
     )
+    p.add_argument(
+        "--no-reason",
+        action="store_true",
+        help="Skip the companion 'why' category per unit (roughly halves JEV token cost).",
+    )
     p.add_argument("--format", choices=["json", "markdown"], default="json")
     p.add_argument("--report", metavar="FILE", help="Write the report to this file instead of stdout.")
     p.add_argument("--node-dir", action="append", default=[], help="Extra directory of pattern YAML files (repeatable).")
@@ -51,6 +56,7 @@ def main(argv: list[str] | None = None) -> int:
         env_file=args.env_file,
         concurrency=args.concurrency,
         batch_size=args.batch_size,
+        include_reason=not args.no_reason,
         extra_node_dirs=args.node_dir,
     )
     if args.model:
