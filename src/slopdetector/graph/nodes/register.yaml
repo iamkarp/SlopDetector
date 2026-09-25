@@ -77,7 +77,16 @@ patterns:
       words:
         - boasts a
         - vibrant
-        - rich
+        # "rich" alone is too coarse: real false positive from a published
+        # economic-history manuscript ("rich in silver", "rich deposits") —
+        # ordinary literal sense, not the figurative AI cliché. Require the
+        # actual collocation the cliché lives in instead of the bare word.
+        - rich history
+        - rich heritage
+        - rich culture
+        - rich tapestry
+        - rich tradition
+        - rich legacy
         - profound
         - enhancing its
         - showcasing

@@ -224,3 +224,16 @@ def test_semicolon_density_downweighted_for_prescriptive_nf():
     nf_semicolon = next(h for h in hits_nf if h.pattern_id == "semicolon_density")
     default_semicolon = next(h for h in hits_default if h.pattern_id == "semicolon_density")
     assert nf_semicolon.weight < default_semicolon.weight
+
+
+def test_promotional_language_does_not_fire_on_literal_rich():
+    # Real false positive found scanning a published economic-history
+    # manuscript: "rich in silver" / "rich deposits" is ordinary literal
+    # usage, not the figurative AI cliché ("rich cultural heritage").
+    text = "The mines were rich in silver, and the region grew wealthy from trade."
+    assert "register_promotional_language" not in hit_ids(text)
+
+
+def test_promotional_language_still_fires_on_figurative_collocation():
+    text = "The city has a rich heritage spanning centuries."
+    assert "register_promotional_language" in hit_ids(text)
