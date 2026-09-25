@@ -67,7 +67,12 @@ patterns:
     source: "stop-slop/references/structures.md word patterns"
     data:
       flags: [IGNORECASE]
-      pattern: '\b(?:every|always|never|everyone|everybody|nobody)\b'
+      # Negative lookahead on a trailing hyphen: "always-answer baseline" /
+      # "always-on", "never-fail" etc. are compound technical terms, not a
+      # bare hedge-free quantifier — real example that tripped this before
+      # the exclusion: a nonfiction ML book's own defined term "the
+      # always-answer baseline", not a lazy overclaim.
+      pattern: '\b(?:every|always|never|everyone|everybody|nobody)\b(?!-)'
       bands:
         - [3.0, "minor", 0.1]
         - [6.0, "moderate", 0.2]

@@ -57,6 +57,14 @@ def score_unit(text: str, granularity: str, config: Config, nodes: list[dict] | 
         detector = get_detector(node["detector"])
         for hit in detector.match(text, node):
             weighted = _resolve_weight(node, hit, config)
+            # Overwrite with the resolved (genre/profile-adjusted) weight,
+            # not the pattern's static base weight: this is what the hit
+            # actually contributed IN THIS CONTEXT. Report consumers see an
+            # honest 0 for a genre-suppressed pattern instead of its nominal
+            # weight, and pipeline._hits_summary can filter on it to keep
+            # genre-inapplicable hits out of the JEV prompt context (see
+            # that function's docstring for why this matters).
+            hit.weight = weighted
             hits.append(hit)
             total += weighted
     return total, hits

@@ -38,6 +38,14 @@ patterns:
     label: "semicolon-heavy for the surface"
     weight: 0.6
     source: "slopmonster/deslop.py punctuation rule"
+    # slopmonster's own scope for this rule is web/marketing copy ("heavy
+    # for the surface"); a semicolon correctly joining two related
+    # independent clauses ("Its accuracy is high; the scores overstate the
+    # observed correctness rate.") is a mark of careful formal writing in
+    # academic/technical nonfiction, not an AI tell. Real example from a
+    # published-quality ML manuscript that over-fired before this: every
+    # semicolon instance checked was textbook-correct usage.
+    genre_modifiers: {prescriptive-nf: 0.15, _default: 1.0}
     data:
       pattern: ';'
       bands:

@@ -168,3 +168,59 @@ def test_curly_quotes_skips_numbered_bibliography_paragraphs():
 def test_curly_quotes_still_fires_on_ordinary_prose():
     text = 'She said, “I am not sure about this,” and left the room.'
     assert "register_curly_quotes" in hit_ids(text)
+
+
+def test_genre_suppressed_hit_weight_is_zeroed_not_just_omitted_from_score():
+    # rules.score_unit mutates Hit.weight to the resolved (genre-adjusted)
+    # value so downstream consumers (the JEV prompt context, the report)
+    # can tell "detected but suppressed" apart from "detected and counted".
+    _, hits = score_unit(FINGERPRINT_TEXT, "paragraph", Config(genre="prescriptive-nf"), NODES)
+    fingerprint_hits = [h for h in hits if h.pattern_id == "fingerprint_b_continuation_holding"]
+    assert fingerprint_hits, "detector should still fire and be reported"
+    assert all(h.weight == 0.0 for h in fingerprint_hits)
+
+
+def test_hits_summary_excludes_zero_weight_hits_from_jev_context():
+    from slopdetector.pipeline import _hits_summary
+
+    _, hits = score_unit(FINGERPRINT_TEXT, "paragraph", Config(genre="prescriptive-nf"), NODES)
+    summary = _hits_summary(hits)
+    assert "continuation" not in summary.lower()
+
+
+def test_hits_summary_still_includes_nonzero_weight_hits():
+    from slopdetector.pipeline import _hits_summary
+
+    _, hits = score_unit(FINGERPRINT_TEXT, "paragraph", Config(genre="literary-fiction"), NODES)
+    summary = _hits_summary(hits)
+    assert "continuation" in summary.lower()
+
+
+def test_lazy_extremes_does_not_fire_on_hyphenated_technical_terms():
+    # Real false positive found scanning a published-quality ML manuscript:
+    # "the always-answer baseline" is the author's own defined term, not a
+    # hedge-free overclaim.
+    text = "Overall test accuracy supplies the always-answer baseline for comparison."
+    assert "lazy_extremes" not in hit_ids(text)
+
+
+def test_lazy_extremes_still_fires_on_bare_quantifiers():
+    text = "This always works and every input gets the same treatment, no matter what."
+    assert "lazy_extremes" in hit_ids(text)
+
+
+def test_semicolon_density_downweighted_for_prescriptive_nf():
+    # Textbook-correct semicolon usage from a real manuscript: two related
+    # independent clauses. Should barely register for formal nonfiction.
+    text = (
+        "Its accuracy is high; the scores overstate the observed correctness "
+        "rate. Risk concerns known probabilities; ambiguity concerns the "
+        "uncertainty surrounding those probabilities. Chapter 8 examines "
+        "that transfer problem; Chapter 4 first shows how a predictive "
+        "model can represent input-dependent variation."
+    )
+    score_nf, hits_nf = score_unit(text, "paragraph", Config(genre="prescriptive-nf"), NODES)
+    score_default, hits_default = score_unit(text, "paragraph", Config(genre=None), NODES)
+    nf_semicolon = next(h for h in hits_nf if h.pattern_id == "semicolon_density")
+    default_semicolon = next(h for h in hits_default if h.pattern_id == "semicolon_density")
+    assert nf_semicolon.weight < default_semicolon.weight

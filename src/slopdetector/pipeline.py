@@ -32,11 +32,19 @@ def _tier(probability: float, threshold: float) -> str:
 
 
 def _hits_summary(hits: list[Hit]) -> str:
-    if not hits:
+    # Only pass JEV hits that actually counted toward the rule score in this
+    # context. A pattern zeroed out for the active genre (e.g. a fiction
+    # fingerprint under --genre prescriptive-nf) still gets *detected* and
+    # still shows up in the report for transparency, but it should not also
+    # get whispered to JEV as "evidence" once we've decided it doesn't apply
+    # here — that would just reintroduce the genre mismatch through the
+    # back door of the prompt instead of the rule_score.
+    meaningful = [h for h in hits if h.weight > 0]
+    if not meaningful:
         return ""
-    lines = [f"- {h.label}: {h.detail}" for h in hits[:12]]
-    if len(hits) > 12:
-        lines.append(f"- ...and {len(hits) - 12} more hits")
+    lines = [f"- {h.label}: {h.detail}" for h in meaningful[:12]]
+    if len(meaningful) > 12:
+        lines.append(f"- ...and {len(meaningful) - 12} more hits")
     return "\n".join(lines)
 
 
