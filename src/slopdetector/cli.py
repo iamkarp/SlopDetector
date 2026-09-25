@@ -33,6 +33,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Skip the companion 'why' category per unit (roughly halves JEV token cost).",
     )
+    p.add_argument(
+        "--min-flag-confidence",
+        type=float,
+        default=0.3,
+        help="A would-be flag demotes to watch below this reason-distribution certainty (0.0 disables).",
+    )
     p.add_argument("--format", choices=["json", "markdown"], default="json")
     p.add_argument("--report", metavar="FILE", help="Write the report to this file instead of stdout.")
     p.add_argument("--node-dir", action="append", default=[], help="Extra directory of pattern YAML files (repeatable).")
@@ -57,6 +63,7 @@ def main(argv: list[str] | None = None) -> int:
         concurrency=args.concurrency,
         batch_size=args.batch_size,
         include_reason=not args.no_reason,
+        min_flag_confidence=args.min_flag_confidence,
         extra_node_dirs=args.node_dir,
     )
     if args.model:

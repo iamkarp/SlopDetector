@@ -41,6 +41,11 @@ class Config:
     concurrency: int = 6  # concurrent JEV *requests* in flight, each request may hold batch_size units
     batch_size: int = 10  # units judged per JEV decisions call; 1 = one call per unit (old behavior)
     include_reason: bool = True  # companion "why" category per unit; ~2x tokens, --no-reason to skip
+    # A would-be "flag" demotes to "watch" when the reason distribution's
+    # certainty about clean-vs-not (see pipeline._tier) falls below this.
+    # 0.3 is an initial, real-example-grounded default (not yet validated
+    # against a labeled eval corpus — see README). 0.0 disables gating.
+    min_flag_confidence: float = 0.3
     use_llm: bool = True
     env_file: str | None = None
     cache_dir: str | None = ".slopdetector-cache"

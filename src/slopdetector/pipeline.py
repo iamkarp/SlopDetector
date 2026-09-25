@@ -23,12 +23,36 @@ from .rules import rule_score_to_pseudo_probability, score_unit
 from .text_split import split_sentences_with_spans, split_units
 
 
-def _tier(probability: float, threshold: float) -> str:
+def _tier(probability: float, threshold: float, reason: dict | None, min_flag_confidence: float) -> tuple[str, bool]:
+    """Returns (tier, confidence_gated).
+
+    A would-be "flag" is demoted to "watch" when the reason question's own
+    distribution is too uncertain about clean-vs-not to trust it as a real
+    signal — measured as abs(0.5 - not_slop) * 2: 0 at maximum uncertainty
+    (not_slop == 0.5, the reason answer is a coin flip on whether this is
+    slop at all) up to 1 at maximum certainty (not_slop == 0 or 1).
+
+    Real case that motivated this: a real manuscript paragraph blended to
+    0.59 (just over the 0.55 default threshold) with reason confidence only
+    0.29 on its top category. Read by hand, it was noise — a deliberate
+    contrastive sentence construction, not an AI tell — not a real flag.
+    confidence_gated=True marks exactly this demotion so it's visible in
+    the report, not a silent tier change.
+
+    Falls back to the plain threshold comparison when no reason is
+    available (rules-only mode, or --no-reason).
+    """
     if probability >= threshold:
-        return "flag"
+        if reason and reason.get("probabilities"):
+            not_slop = reason["probabilities"].get("not_slop")
+            if not_slop is not None:
+                certainty = abs(0.5 - float(not_slop)) * 2
+                if certainty < min_flag_confidence:
+                    return "watch", True
+        return "flag", False
     if probability >= threshold * 0.6:
-        return "watch"
-    return "clean"
+        return "watch", False
+    return "clean", False
 
 
 def _hits_summary(hits: list[Hit]) -> str:
@@ -64,6 +88,10 @@ class ScoredUnit:
     # is kept for transparency/debugging the two signals' agreement.
     raw_noul: float | None = None
     tier: str = "clean"
+    # True when this unit's probability crossed the flag threshold but was
+    # demoted to "watch" because the reason distribution was too uncertain
+    # about clean-vs-not to trust — see _tier's docstring.
+    confidence_gated: bool = False
     source: str = "rules-only"  # "llm" | "llm-cached" | "rules-only"
     # Real OpenRouter usage for the exact call that scored THIS unit — only
     # set when that call judged this unit alone (batch of 1). Once batched,
@@ -87,6 +115,7 @@ class ScoredUnit:
             "probability": round(self.probability, 4),
             "raw_noul": round(self.raw_noul, 4) if self.raw_noul is not None else None,
             "tier": self.tier,
+            "confidence_gated": self.confidence_gated,
             "score_source": self.source,
             "usage": self.usage,
             "reason": self.reason,
@@ -124,6 +153,7 @@ def _judge_many(
         for uid, text, start_line, end_line in unit_specs:
             rule_score, hits = rule_results[uid]
             probability = rule_score_to_pseudo_probability(rule_score)
+            tier, gated = _tier(probability, config.threshold, None, config.min_flag_confidence)
             results[uid] = ScoredUnit(
                 id=uid,
                 text=text,
@@ -132,7 +162,8 @@ def _judge_many(
                 granularity=granularity,
                 rule_hits=hits,
                 probability=probability,
-                tier=_tier(probability, config.threshold),
+                tier=tier,
+                confidence_gated=gated,
                 source="rules-only",
             )
         return results, batch_usages
@@ -145,6 +176,8 @@ def _judge_many(
         uid_to_key[uid] = key
         cached = cache.get(config.model, text) if cache else None
         if cached:
+            reason = cached.get("reason")
+            tier, gated = _tier(cached["probability"], config.threshold, reason, config.min_flag_confidence)
             results[uid] = ScoredUnit(
                 id=uid,
                 text=text,
@@ -154,9 +187,10 @@ def _judge_many(
                 rule_hits=hits,
                 probability=cached["probability"],
                 raw_noul=cached.get("raw_noul"),
-                tier=_tier(cached["probability"], config.threshold),
+                tier=tier,
+                confidence_gated=gated,
                 source="llm-cached",
-                reason=cached.get("reason"),
+                reason=reason,
             )
         else:
             pending_by_key.setdefault(key, (text, _hits_summary(hits)))
@@ -191,6 +225,8 @@ def _judge_many(
             key = uid_to_key[uid]
             answer = answers_by_key[key]
             _, hits = rule_results[uid]
+            reason = answer.get("reason")
+            tier, gated = _tier(answer["probability"], config.threshold, reason, config.min_flag_confidence)
             results[uid] = ScoredUnit(
                 id=uid,
                 text=text,
@@ -200,10 +236,11 @@ def _judge_many(
                 rule_hits=hits,
                 probability=answer["probability"],
                 raw_noul=answer.get("raw_noul"),
-                tier=_tier(answer["probability"], config.threshold),
+                tier=tier,
+                confidence_gated=gated,
                 source="llm",
                 usage=usage_by_key[key],
-                reason=answer.get("reason"),
+                reason=reason,
             )
 
     return results, batch_usages
@@ -252,10 +289,14 @@ def scan_text(text: str, config: Config | None = None) -> dict:
     # dispatch pass across the whole document (not a loop per paragraph),
     # so drill-down gets the same batching win, and runs concurrently
     # instead of the sequential-per-paragraph shape this used to have.
+    # Gated on tier=="flag" (not the raw probability threshold): a unit
+    # confidence-gated down to "watch" is one we've already decided not to
+    # trust as a real flag, so it doesn't earn the extra API calls to
+    # localize a problem we don't believe is there.
     sentence_specs: list[tuple[str, str, int, int]] = []
     sentence_owner: dict[str, ScoredUnit] = {}
     for unit in scored:
-        if unit.probability < config.threshold:
+        if unit.tier != "flag":
             continue
         sentence_spans = split_sentences_with_spans(unit.text)
         if len(sentence_spans) < 2:
@@ -276,8 +317,11 @@ def scan_text(text: str, config: Config | None = None) -> dict:
     doc_probs = [u.probability for u in scored]
     mean_prob = sum(doc_probs) / len(doc_probs) if doc_probs else 0.0
     tier_counts = {"clean": 0, "watch": 0, "flag": 0}
+    confidence_gated_count = 0
     for u in scored:
         tier_counts[u.tier] += 1
+        if u.confidence_gated:
+            confidence_gated_count += 1
 
     pattern_freq: dict[str, int] = {}
     for u in scored:
@@ -312,12 +356,14 @@ def scan_text(text: str, config: Config | None = None) -> dict:
             "genre": config.genre,
             "profile": config.profile,
             "batch_size": config.batch_size,
+            "min_flag_confidence": config.min_flag_confidence,
             "used_llm": config.use_llm and api_key is not None,
         },
         "summary": {
             "unit_count": len(scored),
             "mean_probability": round(mean_prob, 4),
             "tier_counts": tier_counts,
+            "confidence_gated_count": confidence_gated_count,
             "gate_passed": gate_passed,
             "top_patterns": [{"pattern_id": pid, "count": c} for pid, c in top_patterns],
             "usage_totals": usage_totals,

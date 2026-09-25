@@ -19,7 +19,10 @@ def _render_unit(u: dict, depth: int = 0) -> list[str]:
     raw_str = ""
     if isinstance(raw_noul, (int, float)) and abs(raw_noul - u["probability"]) >= 0.03:
         raw_str = f" (raw noul={raw_noul:.2f})"
-    lines = [f"{indent}- [{mark}] `{u['id']}` p={u['probability']:.2f}{raw_str} ({u['tier']}){reason_str}: {excerpt}"]
+    gated_str = " [confidence-gated: would-be flag, reason too uncertain]" if u.get("confidence_gated") else ""
+    lines = [
+        f"{indent}- [{mark}] `{u['id']}` p={u['probability']:.2f}{raw_str} ({u['tier']}){reason_str}{gated_str}: {excerpt}"
+    ]
     for h in u["rule_hits"][:5]:
         lines.append(f"{indent}    - hit: {h['label']}")
     for child in u["children"]:
@@ -37,7 +40,12 @@ def render(result: dict) -> str:
         f"Threshold: {cfg['threshold']} | Genre: {cfg['genre'] or '-'} | Profile: {cfg['profile']}",
         "",
         f"Units: {s['unit_count']} | Mean probability: {s['mean_probability']:.2f} | "
-        f"Clean: {s['tier_counts']['clean']} Watch: {s['tier_counts']['watch']} Flag: {s['tier_counts']['flag']}",
+        f"Clean: {s['tier_counts']['clean']} Watch: {s['tier_counts']['watch']} Flag: {s['tier_counts']['flag']}"
+        + (
+            f" | {s['confidence_gated_count']} would-be flag(s) confidence-gated to watch"
+            if s.get("confidence_gated_count")
+            else ""
+        ),
         "",
         "Top patterns: " + (", ".join(f"{p['pattern_id']}({p['count']})" for p in s["top_patterns"]) or "none"),
         "",

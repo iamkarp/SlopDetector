@@ -133,6 +133,28 @@ same real chapter, most paragraphs moved down (clean count rose from 60 to
 76), but a few where both signals agreed something was actually
 slop-suspicious moved *up* into the flag tier.
 
+### `--min-flag-confidence` — don't trust a flag the model itself isn't sure of
+
+Even after reconciliation, a paragraph can cross the flag threshold on a
+blend of two individually shaky numbers — e.g. a real case: blended 0.59
+(just over the 0.55 default), but the reason question's own distribution
+was nearly a coin flip on whether it was `not_slop` at all (confidence
+0.29 on its nominal top category). Read by hand, it was noise, not a tell.
+
+A would-be "flag" now demotes to "watch" (`units[].confidence_gated: true`)
+when `abs(0.5 - reason.probabilities.not_slop) * 2` — 0 at a coin flip, 1
+at full certainty either way — falls below `--min-flag-confidence`
+(default 0.3; `0.0` disables gating). A gated unit also skips the
+sentence-level drill-down: if it isn't trusted as a real flag, it doesn't
+earn the extra API calls to localize a problem believed not to be there.
+Verified live: a paragraph with `not_slop`=0.48 (essentially a coin flip)
+correctly gated; the markdown report marks it
+`[confidence-gated: would-be flag, reason too uncertain]`.
+
+This default (0.3) is grounded in real examples from this session, not a
+labeled eval corpus — treat it as a starting point, tune with
+`--min-flag-confidence` if your material runs differently.
+
 ## Extending the pattern graph
 
 Add a new pattern with zero code changes: drop a YAML file (or a node) into

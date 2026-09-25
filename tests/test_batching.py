@@ -187,3 +187,92 @@ def test_raw_noul_flows_through_fresh_and_cached_paths(monkeypatch, tmp_path):
     assert result2["units"][0]["probability"] == pytest.approx(0.2)
     assert result2["units"][0]["raw_noul"] == pytest.approx(0.6)
     assert len(calls) == 1  # second run never called judge_batch
+
+
+def _fake_judge_batch_with_reason(probability, not_slop):
+    def fake(items, *, model, api_key, pattern_taxonomy="", include_reason=True, timeout=60, max_retries=3):
+        reason = {
+            "category": "not_slop" if not_slop > 0.5 else "formulaic_construction",
+            "confidence": max(not_slop, 1 - not_slop),
+            "probabilities": {"not_slop": not_slop},
+        }
+        answers = {
+            key: {"probability": probability, "raw_noul": probability, "rationale": "fake", "reason": reason}
+            for key, _t, _h in items
+        }
+        usage = {"input_tokens": 10, "output_tokens": 1, "cost": 0.0001}
+        return {"answers": answers, "usage": usage}
+
+    return fake
+
+
+def test_low_confidence_flag_is_gated_down_to_watch(monkeypatch):
+    # probability crosses the 0.55 default threshold, but the reason
+    # question's not_slop sits right at 0.5 (a coin flip) -> certainty is 0,
+    # well below the default min_flag_confidence of 0.3 -> demoted.
+    monkeypatch.setattr(pipeline_module, "load_api_key", lambda env_file=None: "fake-key")
+    monkeypatch.setattr(pipeline_module, "judge_batch", _fake_judge_batch_with_reason(0.59, 0.5))
+
+    cfg = Config(use_llm=True, batch_size=10, cache_dir=None)
+    result = scan_text(PARA_A, cfg)
+    unit = result["units"][0]
+    assert unit["probability"] == pytest.approx(0.59)
+    assert unit["tier"] == "watch"
+    assert unit["confidence_gated"] is True
+    assert result["summary"]["confidence_gated_count"] == 1
+    assert result["summary"]["tier_counts"]["flag"] == 0
+
+
+def test_high_confidence_flag_is_not_gated(monkeypatch):
+    # not_slop very low (0.02) -> certainty near 1.0, well above the floor.
+    monkeypatch.setattr(pipeline_module, "load_api_key", lambda env_file=None: "fake-key")
+    monkeypatch.setattr(pipeline_module, "judge_batch", _fake_judge_batch_with_reason(0.9, 0.02))
+
+    cfg = Config(use_llm=True, batch_size=10, cache_dir=None)
+    result = scan_text(PARA_A, cfg)
+    unit = result["units"][0]
+    assert unit["tier"] == "flag"
+    assert unit["confidence_gated"] is False
+    assert result["summary"]["confidence_gated_count"] == 0
+
+
+def test_gated_unit_does_not_trigger_sentence_drilldown(monkeypatch):
+    monkeypatch.setattr(pipeline_module, "load_api_key", lambda env_file=None: "fake-key")
+    monkeypatch.setattr(pipeline_module, "judge_batch", _fake_judge_batch_with_reason(0.59, 0.5))
+
+    text = f"{PARA_A} {PARA_B}"  # multi-sentence, would normally drill down if trusted as a flag
+    cfg = Config(use_llm=True, batch_size=10, cache_dir=None)
+    result = scan_text(text, cfg)
+    unit = result["units"][0]
+    assert unit["confidence_gated"] is True
+    assert unit["children"] == []  # gated: not trusted enough to spend calls localizing it
+
+
+def test_min_flag_confidence_zero_disables_gating(monkeypatch):
+    monkeypatch.setattr(pipeline_module, "load_api_key", lambda env_file=None: "fake-key")
+    monkeypatch.setattr(pipeline_module, "judge_batch", _fake_judge_batch_with_reason(0.59, 0.5))
+
+    cfg = Config(use_llm=True, batch_size=10, cache_dir=None, min_flag_confidence=0.0)
+    result = scan_text(PARA_A, cfg)
+    unit = result["units"][0]
+    assert unit["tier"] == "flag"
+    assert unit["confidence_gated"] is False
+
+
+def test_gating_falls_back_to_plain_threshold_without_reason(monkeypatch):
+    # include_reason=False -> reason is None -> gating can't evaluate,
+    # falls back to the plain threshold comparison (never gates blindly).
+    def fake(items, *, model, api_key, pattern_taxonomy="", include_reason=True, timeout=60, max_retries=3):
+        answers = {
+            key: {"probability": 0.9, "raw_noul": 0.9, "rationale": "fake", "reason": None} for key, _t, _h in items
+        }
+        return {"answers": answers, "usage": {"input_tokens": 1, "output_tokens": 1, "cost": 0.0}}
+
+    monkeypatch.setattr(pipeline_module, "load_api_key", lambda env_file=None: "fake-key")
+    monkeypatch.setattr(pipeline_module, "judge_batch", fake)
+
+    cfg = Config(use_llm=True, batch_size=10, cache_dir=None, include_reason=False)
+    result = scan_text(PARA_A, cfg)
+    unit = result["units"][0]
+    assert unit["tier"] == "flag"
+    assert unit["confidence_gated"] is False
