@@ -106,5 +106,6 @@ def test_usage_totals_are_zero_in_rules_only_mode():
         "output_tokens": 0,
         "cost_usd": 0.0,
         "billed_calls": 0,
+        "fresh_units": 0,
         "cached_calls": 0,
     }

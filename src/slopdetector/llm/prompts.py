@@ -65,3 +65,54 @@ def build_decision_body(model: str, text: str, rule_hits_summary: str, pattern_t
             }
         },
     }
+
+
+def build_batch_decision_body(
+    model: str,
+    items: list[tuple[str, str, str]],  # (question_key, text, rule_hits_summary)
+    pattern_taxonomy: str | None = None,
+) -> dict:
+    """Batched form of build_decision_body: N paragraphs judged as N
+    independent 'noul' questions in one request. Jev's `state` object is
+    shared across every question in the request, so the taxonomy — the one
+    genuinely identical, ~500-token blob — goes there once instead of being
+    repeated N times. Each paragraph's own text stays embedded directly in
+    ITS OWN question's `instructions`, not in shared state, so there is no
+    ambiguity about which text a given question is judging even though all
+    questions are answered from the same request context.
+    """
+    taxonomy = pattern_taxonomy or NON_MECHANICAL_TAXONOMY
+    criteria = {
+        "true": (
+            "The paragraph shows AI-slop characteristics: clustered AI-tell vocabulary, "
+            "formulaic sentence constructions, empty rhetorical flourishes, or other "
+            "machine-smoothed patterns — especially when several distinct tells co-occur."
+        ),
+        "false": (
+            "The paragraph reads as human-written: specific concrete detail, natural "
+            "rhythm variance, no clustering of AI tells even if one isolated common "
+            "word appears."
+        ),
+    }
+    questions = {}
+    for key, text, rule_hits_summary in items:
+        questions[key] = {
+            "type": "noul",
+            "instructions": (
+                f"This question judges ONE specific paragraph only — other questions in this "
+                f"batch judge different, unrelated paragraphs; do not let them influence each "
+                f"other. The paragraph for THIS question:\n\"\"\"\n{text}\n\"\"\"\n\n"
+                f"Rule-based hits already found in THIS paragraph: {rule_hits_summary or '(none)'}\n\n"
+                "Is this specific paragraph AI-generated slop (LLM-written or heavily "
+                "AI-smoothed prose), as opposed to text written by a human without AI "
+                "assistance? Weigh density and clustering of tells, not the mere presence of "
+                "one common word. Also weigh tells no mechanical rule can catch, described in "
+                "state.ai_tell_taxonomy."
+            ),
+            "criteria": criteria,
+        }
+    return {
+        "model": model,
+        "state": {"ai_tell_taxonomy": taxonomy},
+        "questions": questions,
+    }

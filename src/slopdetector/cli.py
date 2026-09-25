@@ -21,7 +21,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--formality", choices=["formal", "neutral", "casual"], default="neutral")
     p.add_argument("--no-llm", action="store_true", help="Rules-only mode, skip the JEV call entirely.")
     p.add_argument("--env-file", default=None, help="Load OPENROUTER_API_KEY from this dotenv-style file.")
-    p.add_argument("--concurrency", type=int, default=6)
+    p.add_argument("--concurrency", type=int, default=6, help="Concurrent JEV requests in flight at once.")
+    p.add_argument(
+        "--batch-size",
+        type=int,
+        default=10,
+        help="Units judged per JEV decisions call (1 = one call per unit, matches pre-batching behavior).",
+    )
     p.add_argument("--format", choices=["json", "markdown"], default="json")
     p.add_argument("--report", metavar="FILE", help="Write the report to this file instead of stdout.")
     p.add_argument("--node-dir", action="append", default=[], help="Extra directory of pattern YAML files (repeatable).")
@@ -44,6 +50,7 @@ def main(argv: list[str] | None = None) -> int:
         use_llm=not args.no_llm,
         env_file=args.env_file,
         concurrency=args.concurrency,
+        batch_size=args.batch_size,
         extra_node_dirs=args.node_dir,
     )
     if args.model:

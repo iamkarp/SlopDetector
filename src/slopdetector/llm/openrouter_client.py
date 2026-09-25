@@ -44,25 +44,34 @@ def load_api_key(env_file: str | None = None) -> str:
     )
 
 
-def judge_paragraph(
-    text: str,
+def judge_batch(
+    items: list[tuple[str, str, str]],  # (key, text, rule_hits_summary)
     *,
     model: str,
     api_key: str,
-    rule_hits_summary: str = "",
     pattern_taxonomy: str = "",
-    timeout: int = 30,
+    timeout: int = 60,
     max_retries: int = 3,
 ) -> dict:
-    """Returns {"probability": float, "rationale": str, "usage": {"input_tokens",
-    "output_tokens", "cost"}}. usage comes straight from OpenRouter's own
-    response — real metering, not an estimate. Raises OpenRouterModelError
-    with a clear message (naming a fallback) on repeated failure — never
-    fails silently.
-    """
-    from .prompts import QUESTION_KEY, build_decision_body
+    """Judges 1+ paragraphs in ONE decisions call — each as its own
+    independent 'noul' question, sharing one request's fixed overhead (the
+    ~500-token AI-tell taxonomy is sent once in `state`, not once per
+    paragraph). Returns {"answers": {key: {"probability", "rationale"}},
+    "usage": {...}}. `usage` is for the WHOLE request as OpenRouter reports
+    it — real metering, not an estimate — and is only attributable to a
+    single paragraph when len(items) == 1; batching trades that per-unit
+    cost attribution for real, measured token savings in aggregate.
 
-    body = build_decision_body(model, text, rule_hits_summary, pattern_taxonomy or None)
+    Raises OpenRouterModelError with a clear message (naming a fallback) on
+    repeated failure or a malformed/missing answer — never fails silently
+    and never returns a partial result for some keys but not others.
+    """
+    from .prompts import build_batch_decision_body
+
+    if not items:
+        return {"answers": {}, "usage": {"input_tokens": 0, "output_tokens": 0, "cost": 0.0}}
+
+    body = build_batch_decision_body(model, items, pattern_taxonomy or None)
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
@@ -97,22 +106,55 @@ def judge_paragraph(
 
         try:
             payload = resp.json()
-            answer = payload["answers"][QUESTION_KEY]
-            probability = float(answer["noul"])
+            raw_answers = payload["answers"]
         except (ValueError, KeyError, TypeError) as e:
-            # ValueError also covers JSON decode failures (json.JSONDecodeError
-            # subclasses it), so a non-JSON body and a wrong-shaped JSON body
-            # both surface as one clear error instead of leaking a raw traceback.
             raise OpenRouterModelError(f"Unexpected decisions response: {resp.text[:300]}") from e
 
-        probability = max(0.0, min(1.0, probability))
-        rationale = f"Jev noul={probability:.3f}" + (f"; rule hits: {rule_hits_summary[:150]}" if rule_hits_summary else "")
+        answers: dict[str, dict] = {}
+        for key, _text, rule_hits_summary in items:
+            ans = raw_answers.get(key)
+            if not isinstance(ans, dict) or "noul" not in ans:
+                raise OpenRouterModelError(
+                    f"Batched decisions response is missing an answer for '{key}': {resp.text[:300]}"
+                )
+            probability = max(0.0, min(1.0, float(ans["noul"])))
+            rationale = f"Jev noul={probability:.3f} (batched, {len(items)} paragraph(s) in request)" + (
+                f"; rule hits: {rule_hits_summary[:150]}" if rule_hits_summary else ""
+            )
+            answers[key] = {"probability": probability, "rationale": rationale}
+
         raw_usage = payload.get("usage") or {}
         usage = {
             "input_tokens": raw_usage.get("input_tokens", 0),
             "output_tokens": raw_usage.get("output_tokens", 0),
             "cost": raw_usage.get("cost", 0.0),
         }
-        return {"probability": probability, "rationale": rationale, "usage": usage}
+        return {"answers": answers, "usage": usage}
 
     raise OpenRouterModelError(f"OpenRouter decisions call failed after {max_retries} attempts: {last_err}")
+
+
+def judge_paragraph(
+    text: str,
+    *,
+    model: str,
+    api_key: str,
+    rule_hits_summary: str = "",
+    pattern_taxonomy: str = "",
+    timeout: int = 30,
+    max_retries: int = 3,
+) -> dict:
+    """Single-paragraph convenience wrapper over judge_batch (a batch of
+    one) — kept for simple library/script use. Returns {"probability",
+    "rationale", "usage"}; usage is exact here since the batch has one item.
+    """
+    result = judge_batch(
+        [("q", text, rule_hits_summary)],
+        model=model,
+        api_key=api_key,
+        pattern_taxonomy=pattern_taxonomy,
+        timeout=timeout,
+        max_retries=max_retries,
+    )
+    answer = result["answers"]["q"]
+    return {"probability": answer["probability"], "rationale": answer["rationale"], "usage": result["usage"]}

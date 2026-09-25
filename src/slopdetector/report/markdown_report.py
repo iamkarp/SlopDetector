@@ -31,7 +31,8 @@ def render(result: dict) -> str:
         "",
         "Top patterns: " + (", ".join(f"{p['pattern_id']}({p['count']})" for p in s["top_patterns"]) or "none"),
         "",
-        f"Usage this run: {s['usage_totals']['billed_calls']} billed call(s), "
+        f"Usage this run: {s['usage_totals']['fresh_units']} unit(s) judged fresh via "
+        f"{s['usage_totals']['billed_calls']} API call(s) (batch size {cfg['batch_size']}), "
         f"{s['usage_totals']['cached_calls']} cache hit(s) | "
         f"{s['usage_totals']['input_tokens']} input tokens, {s['usage_totals']['output_tokens']} output tokens | "
         f"${s['usage_totals']['cost_usd']:.6f}",

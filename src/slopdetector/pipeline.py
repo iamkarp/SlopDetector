@@ -1,27 +1,24 @@
 """Three-stage tree pipeline:
   Stage A (rules, free, every unit)      -> deterministic hits + rule_score
-  Stage B (JEV call, every unit)         -> probability, always recorded
-  Stage C (drill-down, conditional)      -> re-run A+B per sentence, as children
+  Stage B (JEV call, every unit)         -> probability, always recorded,
+                                             batched config.batch_size units
+                                             per call to cut fixed overhead
+  Stage C (drill-down, conditional)      -> re-run A+B per sentence, as
+                                             children; every flagged
+                                             paragraph's sentences are pooled
+                                             into one batched dispatch pass
+                                             across the whole document
 """
 
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from contextlib import nullcontext
 from dataclasses import dataclass, field
 
 from .config import Config
 from .detectors import Hit
 from .graph import load_nodes
-from .llm import (
-    DiskCache,
-    InFlightGuard,
-    OpenRouterAuthError,
-    OpenRouterModelError,
-    cache_key,
-    judge_paragraph,
-    load_api_key,
-)
+from .llm import DiskCache, cache_key, judge_batch, load_api_key
 from .rules import rule_score_to_pseudo_probability, score_unit
 from .text_split import split_sentences_with_spans, split_units
 
@@ -51,10 +48,15 @@ class ScoredUnit:
     end_line: int
     granularity: str
     rule_hits: list[Hit]
-    probability: float
-    tier: str
-    source: str  # "llm" | "llm-cached" | "rules-only"
-    usage: dict | None = None  # real OpenRouter usage, only set when source == "llm"
+    probability: float = 0.0
+    tier: str = "clean"
+    source: str = "rules-only"  # "llm" | "llm-cached" | "rules-only"
+    # Real OpenRouter usage for the exact call that scored THIS unit — only
+    # set when that call judged this unit alone (batch of 1). Once batched,
+    # usage is real but only attributable at the batch level (see
+    # summary.usage_totals), not to any single paragraph, so this stays
+    # None rather than guess a split.
+    usage: dict | None = None
     children: list["ScoredUnit"] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -76,95 +78,127 @@ class ScoredUnit:
         }
 
 
-def _score_one(
-    text: str,
-    start_line: int,
-    end_line: int,
+def _judge_many(
+    unit_specs: list[tuple[str, str, int, int]],  # (uid, text, start_line, end_line)
     granularity: str,
-    unit_id: str,
     config: Config,
     nodes: list[dict],
     api_key: str | None,
     cache: DiskCache | None,
-    inflight: InFlightGuard | None,
-) -> ScoredUnit:
-    rule_score, hits = score_unit(text, granularity, config, nodes)
-    usage = None
+) -> tuple[dict[str, ScoredUnit], list[dict]]:
+    """Scores every unit in unit_specs (Stage A always; Stage B if
+    config.use_llm and a key is available). Returns (ScoredUnit per uid,
+    list of real usage records — one per API request actually made).
 
-    if config.use_llm and api_key:
+    Identical text across units (a repeated paragraph, a sentence that also
+    stands alone) is judged once: units are grouped by content hash before
+    dispatch, so duplicates never cost a second API call. Unique pending
+    items are then chunked into config.batch_size-sized decisions calls and
+    dispatched with up to config.concurrency requests in flight at once.
+    """
+    rule_results = {uid: score_unit(text, granularity, config, nodes) for uid, text, _, _ in unit_specs}
+    results: dict[str, ScoredUnit] = {}
+    batch_usages: list[dict] = []
+
+    if not (config.use_llm and api_key):
+        for uid, text, start_line, end_line in unit_specs:
+            rule_score, hits = rule_results[uid]
+            probability = rule_score_to_pseudo_probability(rule_score)
+            results[uid] = ScoredUnit(
+                id=uid,
+                text=text,
+                start_line=start_line,
+                end_line=end_line,
+                granularity=granularity,
+                rule_hits=hits,
+                probability=probability,
+                tier=_tier(probability, config.threshold),
+                source="rules-only",
+            )
+        return results, batch_usages
+
+    pending_by_key: dict[str, tuple[str, str]] = {}  # content hash -> (text, rule_hits_summary)
+    uid_to_key: dict[str, str] = {}
+    for uid, text, start_line, end_line in unit_specs:
+        _, hits = rule_results[uid]
+        key = cache_key(config.model, text)
+        uid_to_key[uid] = key
         cached = cache.get(config.model, text) if cache else None
         if cached:
-            probability, source = cached["probability"], "llm-cached"
+            results[uid] = ScoredUnit(
+                id=uid,
+                text=text,
+                start_line=start_line,
+                end_line=end_line,
+                granularity=granularity,
+                rule_hits=hits,
+                probability=cached["probability"],
+                tier=_tier(cached["probability"], config.threshold),
+                source="llm-cached",
+            )
         else:
-            # Two threads can be asked to score identical text (duplicate
-            # paragraph, or a sentence that also stands alone elsewhere).
-            # Serialize on a per-(model, text) lock so only one of them
-            # actually calls the API; the rest wait, then read the cache
-            # the winner just wrote (atomically, via DiskCache.set).
-            ctx = inflight.lock_for(cache_key(config.model, text)) if inflight else nullcontext()
-            with ctx:
-                cached = cache.get(config.model, text) if cache else None
-                if cached:
-                    probability, source = cached["probability"], "llm-cached"
-                else:
-                    result = judge_paragraph(
-                        text,
-                        model=config.model,
-                        api_key=api_key,
-                        rule_hits_summary=_hits_summary(hits),
-                    )
-                    probability, source = result["probability"], "llm"
-                    usage = result.get("usage")  # only set on a fresh call — a cache hit cost nothing this run
+            pending_by_key.setdefault(key, (text, _hits_summary(hits)))
+
+    if pending_by_key:
+        pending_items = list(pending_by_key.items())
+        batches = [pending_items[i : i + config.batch_size] for i in range(0, len(pending_items), config.batch_size)]
+
+        def run_batch(batch: list[tuple[str, tuple[str, str]]]) -> tuple[list, dict]:
+            items = [(key, text, hits) for key, (text, hits) in batch]
+            return batch, judge_batch(items, model=config.model, api_key=api_key)
+
+        answers_by_key: dict[str, dict] = {}
+        usage_by_key: dict[str, dict | None] = {}
+        with ThreadPoolExecutor(max_workers=config.concurrency) as pool:
+            futures = [pool.submit(run_batch, b) for b in batches]
+            for fut in as_completed(futures):
+                batch, batch_result = fut.result()
+                batch_usages.append(batch_result["usage"])
+                exact_usage = batch_result["usage"] if len(batch) == 1 else None
+                for key, answer in batch_result["answers"].items():
+                    answers_by_key[key] = answer
+                    usage_by_key[key] = exact_usage
                     if cache:
-                        cache.set(config.model, text, result)
-    else:
-        probability, source = rule_score_to_pseudo_probability(rule_score), "rules-only"
+                        cache.set(config.model, pending_by_key[key][0], answer)
 
-    return ScoredUnit(
-        id=unit_id,
-        text=text,
-        start_line=start_line,
-        end_line=end_line,
-        granularity=granularity,
-        rule_hits=hits,
-        probability=probability,
-        tier=_tier(probability, config.threshold),
-        source=source,
-        usage=usage,
-    )
+        for uid, text, start_line, end_line in unit_specs:
+            if uid in results:
+                continue  # resolved from cache above
+            key = uid_to_key[uid]
+            answer = answers_by_key[key]
+            _, hits = rule_results[uid]
+            results[uid] = ScoredUnit(
+                id=uid,
+                text=text,
+                start_line=start_line,
+                end_line=end_line,
+                granularity=granularity,
+                rule_hits=hits,
+                probability=answer["probability"],
+                tier=_tier(answer["probability"], config.threshold),
+                source="llm",
+                usage=usage_by_key[key],
+            )
+
+    return results, batch_usages
 
 
-def _sum_usage(units: list[ScoredUnit]) -> dict:
-    """Real spend for this run: only units.usage set by a fresh API call
-    (source == 'llm') count — a cache hit is real work already paid for in
-    an earlier run, not new cost here. Walks children too (Stage C makes
-    its own calls)."""
-    input_tokens = output_tokens = 0
-    cost = 0.0
-    billed_calls = cached_calls = 0
+def _count_unit_sources(units: list[ScoredUnit]) -> tuple[int, int]:
+    """(fresh_llm_units, cached_llm_units), walking children too."""
+    fresh = cached = 0
 
-    def walk(unit: ScoredUnit) -> None:
-        nonlocal input_tokens, output_tokens, cost, billed_calls, cached_calls
-        if unit.source == "llm" and unit.usage:
-            input_tokens += unit.usage.get("input_tokens", 0)
-            output_tokens += unit.usage.get("output_tokens", 0)
-            cost += unit.usage.get("cost", 0.0)
-            billed_calls += 1
-        elif unit.source == "llm-cached":
-            cached_calls += 1
-        for child in unit.children:
-            walk(child)
+    def walk(u: ScoredUnit) -> None:
+        nonlocal fresh, cached
+        if u.source == "llm":
+            fresh += 1
+        elif u.source == "llm-cached":
+            cached += 1
+        for c in u.children:
+            walk(c)
 
     for u in units:
         walk(u)
-
-    return {
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
-        "cost_usd": round(cost, 6),
-        "billed_calls": billed_calls,
-        "cached_calls": cached_calls,
-    }
+    return fresh, cached
 
 
 def scan_text(text: str, config: Config | None = None) -> dict:
@@ -183,58 +217,35 @@ def scan_text(text: str, config: Config | None = None) -> dict:
         api_key = load_api_key(config.env_file)
 
     cache = DiskCache(config.cache_dir) if config.use_llm else None
-    inflight = InFlightGuard() if config.use_llm else None
 
-    scored: list[ScoredUnit] = [None] * len(units)  # type: ignore[list-item]
-    with ThreadPoolExecutor(max_workers=config.concurrency) as pool:
-        futures = {
-            pool.submit(
-                _score_one,
-                u.text,
-                u.start_line,
-                u.end_line,
-                config.granularity,
-                f"{config.granularity}-{u.index}",
-                config,
-                nodes,
-                api_key,
-                cache,
-                inflight,
-            ): u.index
-            for u in units
-        }
-        for fut in as_completed(futures):
-            idx = futures[fut]
-            scored[idx] = fut.result()
+    unit_specs = [(f"{config.granularity}-{u.index}", u.text, u.start_line, u.end_line) for u in units]
+    stage_b_results, batch_usages = _judge_many(unit_specs, config.granularity, config, nodes, api_key, cache)
+    scored = [stage_b_results[uid] for uid, _text, _sl, _el in unit_specs]
 
-    # Stage C: drill down on flagged units. Sentence spans come from the
-    # unit's own text, so start_line/end_line are computed from how many
-    # newlines precede each sentence within the unit, not inherited
-    # wholesale from the parent paragraph.
+    # Stage C: pool every flagged paragraph's sentences into ONE batched
+    # dispatch pass across the whole document (not a loop per paragraph),
+    # so drill-down gets the same batching win, and runs concurrently
+    # instead of the sequential-per-paragraph shape this used to have.
+    sentence_specs: list[tuple[str, str, int, int]] = []
+    sentence_owner: dict[str, ScoredUnit] = {}
     for unit in scored:
         if unit.probability < config.threshold:
             continue
         sentence_spans = split_sentences_with_spans(unit.text)
         if len(sentence_spans) < 2:
             continue
-        children = []
         for i, (sent, span_start, span_end) in enumerate(sentence_spans):
             sent_start_line = unit.start_line + unit.text[:span_start].count("\n")
             sent_end_line = unit.start_line + unit.text[:span_end].count("\n")
-            child = _score_one(
-                sent,
-                sent_start_line,
-                sent_end_line,
-                "sentence",
-                f"{unit.id}-s{i}",
-                config,
-                nodes,
-                api_key,
-                cache,
-                inflight,
-            )
-            children.append(child)
-        unit.children = children
+            suid = f"{unit.id}-s{i}"
+            sentence_specs.append((suid, sent, sent_start_line, sent_end_line))
+            sentence_owner[suid] = unit
+
+    if sentence_specs:
+        stage_c_results, stage_c_usages = _judge_many(sentence_specs, "sentence", config, nodes, api_key, cache)
+        batch_usages.extend(stage_c_usages)
+        for suid, _text, _sl, _el in sentence_specs:
+            sentence_owner[suid].children.append(stage_c_results[suid])
 
     doc_probs = [u.probability for u in scored]
     mean_prob = sum(doc_probs) / len(doc_probs) if doc_probs else 0.0
@@ -248,7 +259,18 @@ def scan_text(text: str, config: Config | None = None) -> dict:
             pattern_freq[h.pattern_id] = pattern_freq.get(h.pattern_id, 0) + 1
     top_patterns = sorted(pattern_freq.items(), key=lambda kv: -kv[1])[:10]
 
-    usage_totals = _sum_usage(scored)
+    input_tokens = sum(u.get("input_tokens", 0) for u in batch_usages)
+    output_tokens = sum(u.get("output_tokens", 0) for u in batch_usages)
+    cost = sum(u.get("cost", 0.0) for u in batch_usages)
+    fresh_units, cached_units = _count_unit_sources(scored)
+    usage_totals = {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "cost_usd": round(cost, 6),
+        "billed_calls": len(batch_usages),  # actual HTTP requests made
+        "fresh_units": fresh_units,  # units judged fresh this run (can be >> billed_calls when batched)
+        "cached_calls": cached_units,
+    }
 
     # profile.gates=True (surface-gate) means any flagged unit fails the
     # document, matching book-forge's 5/5-required marketing-copy gate;
@@ -263,6 +285,7 @@ def scan_text(text: str, config: Config | None = None) -> dict:
             "threshold": config.threshold,
             "genre": config.genre,
             "profile": config.profile,
+            "batch_size": config.batch_size,
             "used_llm": config.use_llm and api_key is not None,
         },
         "summary": {

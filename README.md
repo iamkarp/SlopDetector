@@ -75,7 +75,19 @@ Key flags: `--granularity paragraph|line`, `--threshold 0.0-1.0`,
 `--genre`, `--profile prose-advisory|surface-gate|marketing`,
 `--formality formal|neutral|casual` (gates the missing-contractions check),
 `--model <openrouter-slug>`, `--no-llm` (rules-only, no API call),
-`--format json|markdown`, `--report FILE`.
+`--format json|markdown`, `--report FILE`,
+`--batch-size N` (default 10 — N paragraphs judged per JEV call instead of
+one call each; `--batch-size 1` reverts to one call per unit),
+`--concurrency N` (default 6 — batched calls in flight at once).
+
+Batching is a real, measured win, not a guess: the same 10-paragraph test
+document that cost 25 API calls / 18.4K input tokens / $0.00078 at
+`--batch-size 1` cost 3 calls / 9.0K input tokens / $0.00038 at the default
+`--batch-size 10` — about half the cost, same probabilities (see
+`summary.usage_totals` in the JSON output, or the "Usage this run" line in
+markdown). The trade-off: `units[].usage` (per-paragraph token/cost) is
+only exact when that paragraph's call judged it alone; once batched, cost
+is real but only attributable at the batch level.
 
 ## Extending the pattern graph
 
