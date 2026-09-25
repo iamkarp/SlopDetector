@@ -24,6 +24,32 @@ class OpenRouterModelError(RuntimeError):
     pass
 
 
+def reconcile_probability(noul: float, reason: dict | None) -> tuple[float, float]:
+    """Returns (blended_probability, raw_noul).
+
+    Measured across two independent real manuscripts: the bare `noul`
+    answer systematically reads more slop-suspicious than the SAME
+    request's `reason` (choice) answer implies — 61% of units in one
+    document had noul higher than (1 - reason.probabilities.not_slop) by
+    more than 0.05, mean gap +0.065, worst cases +0.23 (a paragraph scoring
+    noul=0.30 while the reason question was 93% confident it was
+    not_slop). Both answers come from the same model reading the same text,
+    just asked two different ways — neither is presumed more authoritative,
+    so this reconciles them by a plain average rather than trusting noul
+    alone.
+
+    Falls back to bare noul when no reason (or no not_slop probability) is
+    available, e.g. include_reason=False.
+    """
+    if not reason or not reason.get("probabilities"):
+        return noul, noul
+    not_slop = reason["probabilities"].get("not_slop")
+    if not_slop is None:
+        return noul, noul
+    blended = max(0.0, min(1.0, (noul + (1.0 - float(not_slop))) / 2.0))
+    return blended, noul
+
+
 def load_api_key(env_file: str | None = None) -> str:
     if env_file and os.path.isfile(env_file):
         for line in open(env_file, encoding="utf-8"):
@@ -127,7 +153,7 @@ def judge_batch(
                 raise OpenRouterModelError(
                     f"Batched decisions response is missing an answer for '{key}': {resp.text[:300]}"
                 )
-            probability = max(0.0, min(1.0, float(ans["noul"])))
+            noul = max(0.0, min(1.0, float(ans["noul"])))
 
             reason = None
             if include_reason:
@@ -142,10 +168,16 @@ def judge_batch(
                     "probabilities": reason_ans.get("probabilities"),
                 }
 
-            rationale = f"Jev noul={probability:.3f} (batched, {len(items)} paragraph(s) in request)" + (
+            probability, raw_noul = reconcile_probability(noul, reason)
+            rationale = f"Jev noul={raw_noul:.3f} (batched, {len(items)} paragraph(s) in request)" + (
                 f"; rule hits: {rule_hits_summary[:150]}" if rule_hits_summary else ""
             )
-            answers[key] = {"probability": probability, "rationale": rationale, "reason": reason}
+            answers[key] = {
+                "probability": probability,
+                "raw_noul": raw_noul,
+                "rationale": rationale,
+                "reason": reason,
+            }
 
         raw_usage = payload.get("usage") or {}
         usage = {
@@ -171,8 +203,10 @@ def judge_paragraph(
 ) -> dict:
     """Single-paragraph convenience wrapper over judge_batch (a batch of
     one) — kept for simple library/script use. Returns {"probability",
-    "rationale", "reason", "usage"}; usage is exact here since the batch has
-    one item.
+    "raw_noul", "rationale", "reason", "usage"}; usage is exact here since
+    the batch has one item. "probability" is reconciled with the reason
+    answer's not_slop weight when include_reason=True (see
+    reconcile_probability); "raw_noul" is the bare, unreconciled value.
     """
     result = judge_batch(
         [("q", text, rule_hits_summary)],
@@ -186,6 +220,7 @@ def judge_paragraph(
     answer = result["answers"]["q"]
     return {
         "probability": answer["probability"],
+        "raw_noul": answer["raw_noul"],
         "rationale": answer["rationale"],
         "reason": answer["reason"],
         "usage": result["usage"],

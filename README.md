@@ -110,6 +110,29 @@ top-reason confidence on a flag is itself a signal: it means the model
 couldn't settle on a specific, concrete diagnosis, which is worth weighing
 before acting on that flag.
 
+### `probability` vs `raw_noul` — reconciling two answers from the same call
+
+Testing across two independent real manuscripts surfaced a real
+inconsistency: the bare `noul` answer ("is this slop?") systematically ran
+more slop-suspicious than the SAME request's reason answer implied. One
+document had 61% of units where `noul` exceeded `(1 - reason.probabilities
+.not_slop)` by more than 0.05 (mean gap +0.065, worst case +0.23 — a
+paragraph scoring `noul`=0.30 while the reason question was 93% confident
+it was `not_slop`).
+
+`units[].probability` (and everything downstream of it — tier, the
+drill-down threshold, `gate_passed`) is now the reconciled value: a plain
+average of `noul` and `(1 - not_slop)`, computed in
+`llm.openrouter_client.reconcile_probability`. Neither signal is presumed
+more authoritative than the other — they're the same model reading the
+same text, just asked two different ways. The bare, unreconciled value
+stays available as `units[].raw_noul` for transparency; the markdown
+report shows it inline whenever it differs from the reconciled probability
+by 0.03 or more. This isn't one-directional damping: on a re-run of the
+same real chapter, most paragraphs moved down (clean count rose from 60 to
+76), but a few where both signals agreed something was actually
+slop-suspicious moved *up* into the flag tier.
+
 ## Extending the pattern graph
 
 Add a new pattern with zero code changes: drop a YAML file (or a node) into

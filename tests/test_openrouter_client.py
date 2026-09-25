@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from slopdetector.llm.openrouter_client import OpenRouterAuthError, load_api_key
+from slopdetector.llm.openrouter_client import OpenRouterAuthError, load_api_key, reconcile_probability
 
 
 def test_load_api_key_raises_clear_error_when_unset(monkeypatch):
@@ -32,3 +32,41 @@ def test_load_api_key_never_logs_or_returns_placeholder(monkeypatch):
     key = load_api_key()
     assert key == "sk-secret-value"
     assert "secret" not in os.environ.get("SLOPDETECTOR_LOG", "")
+
+
+def test_reconcile_probability_falls_back_to_bare_noul_without_reason():
+    blended, raw = reconcile_probability(0.62, None)
+    assert blended == 0.62
+    assert raw == 0.62
+
+
+def test_reconcile_probability_falls_back_when_no_not_slop_key():
+    reason = {"category": "vocabulary", "confidence": 0.8, "probabilities": {"vocabulary": 0.8}}
+    blended, raw = reconcile_probability(0.62, reason)
+    assert blended == 0.62
+    assert raw == 0.62
+
+
+def test_reconcile_probability_averages_noul_with_one_minus_not_slop():
+    # Real case from the session: noul=0.30, reason 93% confident not_slop.
+    # Expected: (0.30 + (1 - 0.93)) / 2 = (0.30 + 0.07) / 2 = 0.185
+    reason = {"category": "not_slop", "confidence": 0.93, "probabilities": {"not_slop": 0.93}}
+    blended, raw = reconcile_probability(0.30, reason)
+    assert blended == pytest.approx(0.185)
+    assert raw == 0.30
+
+
+def test_reconcile_probability_agrees_when_signals_already_agree():
+    # noul says slop-suspicious, reason is confidently NOT not_slop (i.e.
+    # confidently something else) -> blend should barely move.
+    reason = {"category": "vocabulary", "confidence": 0.9, "probabilities": {"not_slop": 0.05, "vocabulary": 0.9}}
+    blended, raw = reconcile_probability(0.9, reason)
+    assert blended == pytest.approx((0.9 + 0.95) / 2)
+    assert raw == 0.9
+
+
+def test_reconcile_probability_clamped_to_valid_range():
+    reason = {"category": "not_slop", "confidence": 1.0, "probabilities": {"not_slop": 1.0}}
+    blended, raw = reconcile_probability(0.0, reason)
+    assert 0.0 <= blended <= 1.0
+    assert raw == 0.0

@@ -156,3 +156,34 @@ def test_cached_reason_is_served_on_cache_hit(fake_llm, tmp_path):
     result2 = scan_text(PARA_A, cfg)
     assert result2["units"][0]["score_source"] == "llm-cached"
     assert result2["units"][0]["reason"] == {"category": "not_slop", "confidence": 0.9, "probabilities": {}}
+
+
+def test_raw_noul_flows_through_fresh_and_cached_paths(monkeypatch, tmp_path):
+    # judge_batch (the real one, with reconciliation) is faked here at a
+    # lower level than fake_llm's fixture, returning a probability that
+    # already differs from raw_noul, to check ScoredUnit/to_dict plumb both
+    # through rather than reconcile_probability's math itself (that's
+    # covered in test_openrouter_client.py).
+    calls = []
+
+    def fake_judge_batch(items, *, model, api_key, pattern_taxonomy="", include_reason=True, timeout=60, max_retries=3):
+        calls.append(items)
+        answers = {
+            key: {"probability": 0.2, "raw_noul": 0.6, "rationale": "fake", "reason": None} for key, _t, _h in items
+        }
+        usage = {"input_tokens": 10, "output_tokens": 1, "cost": 0.0001}
+        return {"answers": answers, "usage": usage}
+
+    monkeypatch.setattr(pipeline_module, "load_api_key", lambda env_file=None: "fake-key")
+    monkeypatch.setattr(pipeline_module, "judge_batch", fake_judge_batch)
+
+    cfg = Config(use_llm=True, batch_size=10, cache_dir=str(tmp_path), threshold=0.99)
+    result = scan_text(PARA_A, cfg)
+    assert result["units"][0]["probability"] == pytest.approx(0.2)
+    assert result["units"][0]["raw_noul"] == pytest.approx(0.6)
+
+    result2 = scan_text(PARA_A, cfg)  # cache hit
+    assert result2["units"][0]["score_source"] == "llm-cached"
+    assert result2["units"][0]["probability"] == pytest.approx(0.2)
+    assert result2["units"][0]["raw_noul"] == pytest.approx(0.6)
+    assert len(calls) == 1  # second run never called judge_batch

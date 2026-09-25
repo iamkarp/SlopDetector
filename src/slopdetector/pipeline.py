@@ -57,6 +57,12 @@ class ScoredUnit:
     granularity: str
     rule_hits: list[Hit]
     probability: float = 0.0
+    # Bare Jev "is this slop" answer before reconciliation with the reason
+    # question's not_slop weight (see llm.openrouter_client.reconcile_
+    # probability). None outside the llm/llm-cached paths. `probability`
+    # above is the one everything else (tier, threshold, gate) uses; this
+    # is kept for transparency/debugging the two signals' agreement.
+    raw_noul: float | None = None
     tier: str = "clean"
     source: str = "rules-only"  # "llm" | "llm-cached" | "rules-only"
     # Real OpenRouter usage for the exact call that scored THIS unit — only
@@ -79,6 +85,7 @@ class ScoredUnit:
             "end_line": self.end_line,
             "granularity": self.granularity,
             "probability": round(self.probability, 4),
+            "raw_noul": round(self.raw_noul, 4) if self.raw_noul is not None else None,
             "tier": self.tier,
             "score_source": self.source,
             "usage": self.usage,
@@ -146,6 +153,7 @@ def _judge_many(
                 granularity=granularity,
                 rule_hits=hits,
                 probability=cached["probability"],
+                raw_noul=cached.get("raw_noul"),
                 tier=_tier(cached["probability"], config.threshold),
                 source="llm-cached",
                 reason=cached.get("reason"),
@@ -191,6 +199,7 @@ def _judge_many(
                 granularity=granularity,
                 rule_hits=hits,
                 probability=answer["probability"],
+                raw_noul=answer.get("raw_noul"),
                 tier=_tier(answer["probability"], config.threshold),
                 source="llm",
                 usage=usage_by_key[key],
