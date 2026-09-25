@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from .base import Detector, Hit, register
+from .base import Detector, Hit, register, should_skip
 
 _SENT_SPLIT = re.compile(r"(?<=[.!?])\s+")
 _LEAD_WORDS = re.compile(r"^\s*(\w+\s+\w+)")
@@ -14,6 +14,8 @@ class AnaphoraRunDetector(Detector):
     (excessive parallelism), per book-forge narrative pattern #8."""
 
     def match(self, text: str, node: dict) -> list[Hit]:
+        if should_skip(text, node["data"]):
+            return []
         sentences = [s for s in _SENT_SPLIT.split(text.strip()) if s]
         run_lead = None
         run_len = 0

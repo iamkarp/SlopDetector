@@ -9,8 +9,16 @@ from .graph import load_nodes
 
 def _resolve_weight(node: dict, hit: Hit, config: Config) -> float:
     w = hit.weight
-    if config.genre and config.genre in node.get("genre_modifiers", {}):
-        w *= node["genre_modifiers"][config.genre]
+    modifiers = node.get("genre_modifiers", {})
+    if config.genre and config.genre in modifiers:
+        w *= modifiers[config.genre]
+    elif "_default" in modifiers:
+        # No --genre given (or genre isn't one this node has an opinion on):
+        # fall back to the node's own default multiplier instead of
+        # silently assuming full weight. Fiction-only patterns (e.g. the
+        # phrase fingerprints) set _default: 0.0 so they don't fire on
+        # nonfiction just because nobody passed --genre.
+        w *= modifiers["_default"]
     return w
 
 

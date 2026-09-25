@@ -182,8 +182,13 @@ patterns:
   - id: register_curly_quotes
     category: register
     detector: regex
-    label: "curly quotation marks"
+    label: “curly quotation marks”
     weight: 0.2
-    source: "book-forge 90-anti-ai-patterns.md #18 / humanizer #19"
+    source: “book-forge 90-anti-ai-patterns.md #18 / humanizer #19”
     data:
       pattern: '[“”]'
+      # Footnote definitions and numbered bibliography entries legitimately
+      # quote titles with curly quotes (Markdown/word-processor typography,
+      # not an AI tell) — skip those paragraph shapes entirely rather than
+      # let citation-heavy nonfiction rack up false positives.
+      skip_if: '^\[\^[^\]]+\]:|^\d+\.\s+[A-Z][\w''-]+,\s+[A-Z]'

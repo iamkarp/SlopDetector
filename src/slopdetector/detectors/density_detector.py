@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from .base import Detector, Hit, register
+from .base import Detector, Hit, register, should_skip
 
 _WORD_RE = re.compile(r"\b\w+\b")
 
@@ -20,6 +20,8 @@ class DensityDetector(Detector):
 
     def match(self, text: str, node: dict) -> list[Hit]:
         data = node["data"]
+        if should_skip(text, data):
+            return []
         flags = 0
         for f in data.get("flags", []):
             flags |= getattr(re, f)

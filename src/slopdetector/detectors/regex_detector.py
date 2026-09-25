@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from .base import Detector, Hit, register
+from .base import Detector, Hit, register, should_skip
 
 
 @register("regex")
@@ -11,6 +11,8 @@ class RegexDetector(Detector):
 
     def match(self, text: str, node: dict) -> list[Hit]:
         data = node["data"]
+        if should_skip(text, data):
+            return []
         flags = 0
         for f in data.get("flags", []):
             flags |= getattr(re, f)
@@ -36,6 +38,8 @@ class RegexMinCountDetector(Detector):
 
     def match(self, text: str, node: dict) -> list[Hit]:
         data = node["data"]
+        if should_skip(text, data):
+            return []
         flags = 0
         for f in data.get("flags", []):
             flags |= getattr(re, f)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from .base import Detector, Hit, register
+from .base import Detector, Hit, register, should_skip
 
 # Ported from slopmonster/tools/deslop.py _root_pattern: strip common suffixes,
 # then reattach the inflection family, so "elevate" also catches "elevates"/"elevating".
@@ -29,6 +29,8 @@ class _WordlistBase(Detector):
 
     def match(self, text: str, node: dict) -> list[Hit]:
         data = node["data"]
+        if should_skip(text, data):
+            return []
         words: list[str] = data["words"]
         hits: list[Hit] = []
         for word in words:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -28,6 +29,23 @@ def register(name: str):
         return cls
 
     return _wrap
+
+
+def should_skip(text: str, data: dict) -> bool:
+    """Standard opt-out hook for any detector: node.data.skip_if is a regex
+    (optionally node.data.skip_if_flags, e.g. ["MULTILINE"]) — if it matches
+    the unit's text at all, the whole node is skipped for this unit. Used to
+    exempt structural text (footnote definitions, bibliography entries) from
+    patterns meant for prose, without hard-coding document structure into
+    the pipeline itself.
+    """
+    pattern = data.get("skip_if")
+    if not pattern:
+        return False
+    flags = 0
+    for f in data.get("skip_if_flags", []):
+        flags |= getattr(re, f)
+    return bool(re.search(pattern, text, flags))
 
 
 def get_detector(name: str) -> Detector:

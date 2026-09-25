@@ -131,3 +131,40 @@ def test_prose_advisory_profile_still_flags_a_dash_cluster():
     ids = {h.pattern_id for h in hits}
     assert "em_dash_cluster" in ids
     assert "em_dash_hard_zero" not in ids
+
+
+FINGERPRINT_TEXT = "She keeps looking at the door. He holds still and remains quiet, almost as if he knows."
+
+
+def test_fingerprint_scores_zero_weight_with_no_genre_specified():
+    score, hits = score_unit(FINGERPRINT_TEXT, "paragraph", Config(genre=None), NODES)
+    ids = {h.pattern_id for h in hits}
+    assert "fingerprint_b_continuation_holding" in ids  # detector still fires...
+    assert score == 0.0  # ...but contributes nothing without an explicit fiction genre
+
+
+def test_fingerprint_scores_zero_weight_for_prescriptive_nf():
+    score, _ = score_unit(FINGERPRINT_TEXT, "paragraph", Config(genre="prescriptive-nf"), NODES)
+    assert score == 0.0
+
+
+def test_fingerprint_scores_full_weight_for_literary_fiction():
+    score, _ = score_unit(FINGERPRINT_TEXT, "paragraph", Config(genre="literary-fiction"), NODES)
+    assert score > 0.0
+
+
+def test_curly_quotes_skips_footnote_definition_paragraphs():
+    text = '[^zillow]: Zillow Group, “Form 8-K,” filed 2 November 2021.'
+    hits = hit_ids(text)
+    assert "register_curly_quotes" not in hits
+
+
+def test_curly_quotes_skips_numbered_bibliography_paragraphs():
+    text = '1. Murphy, Kevin P. *Probabilistic Machine Learning.* MIT Press, 2022. 2. Bishop, Christopher. “Pattern Recognition.” Springer, 2006.'
+    hits = hit_ids(text)
+    assert "register_curly_quotes" not in hits
+
+
+def test_curly_quotes_still_fires_on_ordinary_prose():
+    text = 'She said, “I am not sure about this,” and left the room.'
+    assert "register_curly_quotes" in hit_ids(text)

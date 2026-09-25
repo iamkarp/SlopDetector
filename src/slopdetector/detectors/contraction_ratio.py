@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from .base import Detector, Hit, register
+from .base import Detector, Hit, register, should_skip
 
 # New detector, not present in any source skill: AI drafts skew heavily toward
 # expanded forms ("they do not" instead of "they don't"). Flag units whose
@@ -28,6 +28,8 @@ _FORMALITY_FLOOR = {"casual": 0.6, "neutral": 0.35, "formal": 0.0}
 @register("contraction_ratio")
 class ContractionRatioDetector(Detector):
     def match(self, text: str, node: dict) -> list[Hit]:
+        if should_skip(text, node["data"]):
+            return []
         expanded = 0
         contracted = 0
         details = []
